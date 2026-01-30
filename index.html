@@ -1,0 +1,113 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAS Clinical Trial Decision Tree</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Tldraw CSS -->
+    <link rel="stylesheet" href="https://esm.sh/tldraw@2.4.4/tldraw.css" />
+    <script>
+        // Polyfill process.env for client-side usage to prevent crashes
+        window.process = {
+            env: {
+                API_KEY: '', // API key will be injected by the environment or stay empty
+                NODE_ENV: 'development'
+            }
+        };
+    </script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'canvas': '#F9F5F6',
+              'ink': '#383838',
+              'primary': '#F2BED1',
+              'accent': '#FDCEDF',
+              'soft': '#F8E8EE',
+            },
+            fontFamily: {
+              'mono': ['"JetBrains Mono"', 'monospace'],
+              'sans': ['Inter', 'sans-serif'],
+            },
+            borderWidth: {
+              '1': '1px',
+            },
+            borderRadius: {
+              'none': '0px',
+            },
+            boxShadow: {
+              'brutal': '2px 2px 0px 0px #383838',
+              'brutal-lg': '4px 4px 0px 0px #383838',
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+        body { 
+          font-family: 'Inter', sans-serif; 
+          background-color: #F9F5F6;
+          color: #383838;
+        }
+        h1, h2, h3, h4, .ui-mono { 
+          font-family: 'JetBrains Mono', monospace; 
+          text-transform: uppercase;
+          letter-spacing: -0.02em;
+        }
+        .brutal-card {
+          background-color: #FFFFFF;
+          border: 1px solid #383838;
+          box-shadow: 2px 2px 0px 0px #383838;
+          border-radius: 0px;
+        }
+        .brutal-btn {
+          background-color: #FFFFFF;
+          border: 1px solid #383838;
+          box-shadow: 2px 2px 0px 0px #383838;
+          border-radius: 0px;
+          transition: all 0.1s;
+        }
+        .brutal-btn:active {
+          box-shadow: 0px 0px 0px 0px #383838;
+          transform: translate(2px, 2px);
+        }
+        .brutal-btn-primary {
+          background-color: #F2BED1;
+        }
+        pre, code { font-family: 'JetBrains Mono', monospace; border-radius: 0px !important; }
+        
+        /* Tldraw overrides to match theme */
+        .tl-container {
+            background-color: #F9F5F6 !important;
+        }
+        .tl-background {
+            background-color: #F9F5F6 !important;
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react/": "https://esm.sh/react@18.2.0/",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0",
+    "@google/genai": "https://esm.sh/@google/genai@0.1.1",
+    "tldraw": "https://esm.sh/tldraw@2.4.4?bundle&deps=react@18.2.0,react-dom@18.2.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/"
+  }
+}
+</script>
+</head>
+<body class="bg-canvas text-ink">
+    <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
+</body>
+</html>

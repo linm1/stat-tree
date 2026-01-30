@@ -1,0 +1,5 @@
+{
+  "name": "SAS Clinical Trial Analysis Decision Tree",
+  "description": "An interactive tool for clinical statisticians to select the appropriate SAS procedure based on study design and outcome type, featuring syntax examples and briefings.",
+  "requestFramePermissions": []
+}
