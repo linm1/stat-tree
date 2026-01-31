@@ -2,18 +2,38 @@
 import { TreeData } from './types';
 
 export const TREE_DATA: TreeData = {
+  // ═══════════════════════════════════════════════════════════════════
+  // LAYER 1: START
+  // ═══════════════════════════════════════════════════════════════════
   start: {
     id: 'start',
-    question: "What's your primary question?",
+    question: "What's your question?",
     description: "Define the main objective of your statistical analysis.",
     options: [
-      { label: "Compare Groups", description: "Hypothesis testing between different treatment arms or cohorts.", nextNodeId: 'compare_objective' },
-      { label: "Describe / Explore", description: "Summary statistics without formal hypothesis testing.", nextNodeId: 'describe_result' }
+      { label: "Compare Groups", description: "Hypothesis testing between different treatment arms or cohorts.", nextNodeId: 'compare_groups' },
+      { label: "Describe / Explore", description: "Summary statistics without formal hypothesis testing.", nextNodeId: 'describe_explore' }
     ]
   },
-  describe_result: {
-    id: 'describe_result',
-    question: "Descriptive Statistics Selected",
+
+  // ═══════════════════════════════════════════════════════════════════
+  // LAYER 2: COMPARE GROUPS vs DESCRIBE/EXPLORE
+  // ═══════════════════════════════════════════════════════════════════
+  compare_groups: {
+    id: 'compare_groups',
+    question: "Compare Groups - What type of outcome?",
+    description: "Hypothesis testing between treatment arms. Select your outcome type.",
+    options: [
+      { label: "Continuous", description: "Normal or near-normal data (Weight, BP, Lab Values).", nextNodeId: 'cont_time' },
+      { label: "Binary", description: "Yes/No, Response/Non-response, Success/Failure.", nextNodeId: 'bin_time' },
+      { label: "Count", description: "# of events, Exacerbations, AEs.", nextNodeId: 'count_check' },
+      { label: "Time-to-Event", description: "Survival, Time to Remission, Time to Failure.", nextNodeId: 'tte_type' },
+      { label: "Ordinal / Categorical", description: "Severity scales, multi-level ordered or nominal data.", nextNodeId: 'ord_type' }
+    ]
+  },
+  describe_explore: {
+    id: 'describe_explore',
+    question: "Describe / Explore",
+    description: "Summary statistics without formal hypothesis testing.",
     result: {
       procedures: ['PROC MEANS', 'PROC FREQ', 'PROC UNIVARIATE', 'PROC TABULATE'],
       briefing: "Use these procedures for initial data exploration, identifying distributions, and generating summary tables for baseline characteristics.",
@@ -25,29 +45,18 @@ export const TREE_DATA: TreeData = {
     var age weight bmi;
 run;`,
           description: "Summary of continuous variables by group."
+        },
+        {
+          title: "Frequency Tables",
+          code: `proc freq data=trial;
+    tables gender race ethnicity / nocum;
+run;`,
+          description: "Frequency distribution of categorical variables."
         }
       ]
     }
   },
-  compare_objective: {
-    id: 'compare_objective',
-    question: "Is this a Primary or Secondary Endpoint?",
-    options: [
-      { label: "Primary Endpoint", description: "The main outcome used to evaluate the efficacy of the treatment.", nextNodeId: 'outcome_type' },
-      { label: "Secondary / Exploratory", description: "Additional endpoints supporting the primary objective.", nextNodeId: 'outcome_type' }
-    ]
-  },
-  outcome_type: {
-    id: 'outcome_type',
-    question: "What type of outcome are you analyzing?",
-    options: [
-      { label: "Continuous", description: "Normal or near-normal data (Weight, BP, Lab Values).", nextNodeId: 'cont_time' },
-      { label: "Binary", description: "Yes/No, Response/Non-response, Success/Failure.", nextNodeId: 'bin_time' },
-      { label: "Count", description: "# of events, Exacerbations, AEs.", nextNodeId: 'count_check' },
-      { label: "Time-to-Event", description: "Survival, Time to Remission, Time to Failure.", nextNodeId: 'tte_type' },
-      { label: "Ordinal / Categorical", description: "Severity scales, multi-level ordered or nominal data.", nextNodeId: 'ord_type' }
-    ]
-  },
+
   // --- CONTINUOUS BRANCH ---
   cont_time: {
     id: 'cont_time',

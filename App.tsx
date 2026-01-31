@@ -1,11 +1,11 @@
 
 import * as React from 'react';
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { 
-  RotateCcw, 
-  ArrowLeft, 
-  BookOpen, 
-  HelpCircle, 
+import {
+  RotateCcw,
+  ArrowLeft,
+  BookOpen,
+  HelpCircle,
   FileText,
   Map as MapIcon,
   Play
@@ -15,8 +15,24 @@ import { TREE_DATA } from './data';
 import { SASCard } from './components/SASCard';
 import { DecisionNode, TreeData } from './types';
 import { ChatPanel } from './components/ChatPanel';
+import {
+  calculateNodePositions,
+  calculateArrowBend,
+  getArrowStyle,
+  DEFAULT_LAYOUT,
+  LayoutNode
+} from './utils/treeLayout';
 
 // --- Tldraw Map Component ---
+
+// Maximum depth to render in the map view
+// Level 1: START ("What's your question?")
+// Level 2: COMPARE GROUPS | DESCRIBE/EXPLORE (separate nodes)
+// Level 3: Continuous, Binary, Count, Time-to-Event, Ordinal (the 5 outcome branches)
+// Level 4+: Deeper branches (time point, group count, etc.)
+//
+// Note: describe_explore is a result node (leaf) at Level 2
+const MAX_MAP_DEPTH = 4;
 
 interface TldrawMapViewProps {
   data: TreeData;
@@ -25,23 +41,34 @@ interface TldrawMapViewProps {
 
 const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
   const [isMounted, setIsMounted] = useState(false);
+  const editorRef = useRef<Editor | null>(null);
+  const [currentTool, setCurrentTool] = useState<string>('select');
 
   const handleMount = (editor: Editor) => {
-    // --- 1. Define Layout Constants ---
-    const NODE_WIDTH = 220;
-    const NODE_HEIGHT = 80;
-    const X_GAP = 280;
-    const Y_GAP = 180;
-    const START_X = 0;
-    const START_Y = 0;
+    // Store editor reference
+    editorRef.current = editor;
 
-    // --- 2. Helper to create shapes ---
+    // Track tool changes
+    const handleToolChange = () => {
+      const toolId = editor.getCurrentToolId();
+      setCurrentTool(toolId);
+    };
+
+    editor.on('event', handleToolChange);
+    handleToolChange(); // Set initial tool
+    // --- 1. Initialize shape collection and helpers ---
     const shapes: any[] = [];
-    
-    // Use tldraw's utility for ID creation to ensure type safety/validity in 2.x
     const makeId = (id: string) => createShapeId(`node-${id}`);
-    
-    const createNode = (id: string, text: string, x: number, y: number, color: string = 'grey', fill: string = 'none') => {
+
+    // --- 2. Create node helper function ---
+    const createNode = (
+      id: string,
+      text: string,
+      x: number,
+      y: number,
+      color: string = 'grey',
+      fill: string = 'none'
+    ) => {
       const shapeId = makeId(id);
       shapes.push({
         id: shapeId,
@@ -49,15 +76,15 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
         x,
         y,
         props: {
-          w: NODE_WIDTH,
-          h: NODE_HEIGHT,
+          w: DEFAULT_LAYOUT.nodeWidth,
+          h: DEFAULT_LAYOUT.nodeHeight,
           geo: 'rectangle',
-          color: color,
-          fill: fill,
+          color,
+          fill,
           dash: 'solid',
-          size: 's',
+          size: 'm',
           font: 'mono',
-          text: text,
+          text,
           align: 'middle',
           verticalAlign: 'middle',
         },
@@ -68,102 +95,288 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
       return shapeId;
     };
 
-    const createArrow = (startId: any, endId: any, label?: string) => {
-      // Deterministic ID for edges
-      const edgeId = createShapeId(`edge-${startId.id || startId}-${endId.id || endId}`);
-      
+    // --- 3. Create orthogonal edge (right-angle connector) ---
+    const createOrthogonalEdge = (
+      startId: any,
+      endId: any,
+      label: string | undefined,
+      level: number,
+      siblingIndex: number,
+      totalSiblings: number
+    ): void => {
+      const startNode = shapes.find(s => s.id === startId);
+      const endNode = shapes.find(s => s.id === endId);
+
+      if (!startNode || !endNode) {
+        return;
+      }
+
+      // Calculate connection points (centers)
+      const parentCenterX = startNode.x + startNode.props.w / 2;
+      const parentBottomY = startNode.y + startNode.props.h;
+      const childCenterX = endNode.x + endNode.props.w / 2;
+      const childTopY = endNode.y;
+
+      // Midpoint Y position (40% of the gap)
+      const midGap = DEFAULT_LAYOUT.yGap * 0.4;
+      const midY = parentBottomY + midGap;
+
+      // Get arrow style based on level
+      const style = getArrowStyle(level);
+
+      // Create unique base ID for this edge
+      const baseId = `edge-${startId.id || startId}-${endId.id || endId}`;
+
+      // Create 3 line segments for orthogonal path:
+      // 1. Vertical line from parent bottom to midpoint
       shapes.push({
-        id: edgeId,
+        id: createShapeId(`${baseId}-v1`),
         type: 'arrow',
         props: {
-          start: { type: 'binding', boundShapeId: startId, normalizedAnchor: { x: 0.5, y: 1 }, isExact: false },
-          end: { type: 'binding', boundShapeId: endId, normalizedAnchor: { x: 0.5, y: 0 }, isExact: false },
-          color: 'black',
+          start: { x: parentCenterX, y: parentBottomY },
+          end: { x: parentCenterX, y: midY },
+          bend: 0,
+          color: style.color,
           size: 's',
-          dash: 'solid',
+          dash: style.dash,
+          arrowheadStart: 'none',
+          arrowheadEnd: 'none',
+        },
+      });
+
+      // 2. Horizontal line from parent X to child X at midpoint
+      shapes.push({
+        id: createShapeId(`${baseId}-h`),
+        type: 'arrow',
+        props: {
+          start: { x: parentCenterX, y: midY },
+          end: { x: childCenterX, y: midY },
+          bend: 0,
+          color: style.color,
+          size: 's',
+          dash: style.dash,
+          arrowheadStart: 'none',
+          arrowheadEnd: 'none',
           text: label || '',
           font: 'mono',
         },
       });
+
+      // 3. Vertical line from midpoint to child top (with arrowhead)
+      shapes.push({
+        id: createShapeId(`${baseId}-v2`),
+        type: 'arrow',
+        props: {
+          start: { x: childCenterX, y: midY },
+          end: { x: childCenterX, y: childTopY },
+          bend: 0,
+          color: style.color,
+          size: 's',
+          dash: style.dash,
+          arrowheadStart: 'none',
+          arrowheadEnd: 'arrow',
+        },
+      });
     };
 
-    // --- 3. Build the Tree Visuals Manually ---
+    // --- 4. Recursive function to create nodes from layout ---
+    const createNodesFromLayout = (layoutNode: LayoutNode, maxDepth: number = MAX_MAP_DEPTH): void => {
+      // Determine node color and fill based on node ID and layer
+      // Layer 1: start (black, solid)
+      // Layer 2: compare_groups (blue, solid), describe_explore (green, solid - result node)
+      // Layer 3: 5 outcome branches (violet, semi)
+      let color = 'grey';
+      let fill = 'none';
 
-    // Clear existing shapes first
+      if (layoutNode.id === 'start') {
+        // Layer 1: Root node
+        color = 'black';
+        fill = 'solid';
+      } else if (layoutNode.id === 'compare_groups') {
+        // Layer 2: Compare Groups path
+        color = 'blue';
+        fill = 'solid';
+      } else if (layoutNode.id === 'describe_explore') {
+        // Layer 2: Describe/Explore path (result node)
+        color = 'green';
+        fill = 'solid';
+      } else if (['cont_time', 'bin_time', 'count_check', 'tte_type', 'ord_type'].includes(layoutNode.id)) {
+        // Layer 3: The 5 outcome branches (now directly under compare_groups)
+        color = 'violet';
+        fill = 'semi';
+      }
+
+      // Get node text from TREE_DATA
+      const nodeText = data[layoutNode.id]?.question || layoutNode.id;
+
+      // Create the node shape
+      const nodeId = createNode(
+        layoutNode.id,
+        nodeText,
+        layoutNode.x,
+        layoutNode.y,
+        color,
+        fill
+      );
+
+      // STOP RECURSION at max depth - don't create children beyond this level
+      if (layoutNode.level >= maxDepth) {
+        return;
+      }
+
+      // Recursively create children and arrows
+      layoutNode.children.forEach((child, index) => {
+        // Create child node first (with maxDepth parameter)
+        createNodesFromLayout(child, maxDepth);
+
+        // Create curved arrow to child
+        const childNodeId = makeId(child.id);
+
+        // Get arrow label from options
+        const label = data[layoutNode.id]?.options?.find(
+          opt => opt.nextNodeId === child.id
+        )?.label;
+
+        createOrthogonalEdge(
+          nodeId,
+          childNodeId,
+          label,
+          child.level,
+          index,
+          layoutNode.children.length
+        );
+      });
+    };
+
+    // --- 5. Build the tree using layout utilities ---
     editor.selectAll().deleteShapes(editor.getSelectedShapeIds());
 
-    // Level 1: Start
-    const startId = createNode('start', 'START: OBJECTIVE', START_X, START_Y, 'black', 'solid');
+    // Calculate optimal layout positions
+    // FIX: Start at level 1 (not 0) to prevent off-by-one error in maxDepth check
+    const layout = calculateNodePositions(
+      'start',
+      data,
+      DEFAULT_LAYOUT.startX,
+      DEFAULT_LAYOUT.startY,
+      1,  // Changed from 0 to 1 to fix level counting bug
+      DEFAULT_LAYOUT
+    );
 
-    // Level 2: Compare vs Describe
-    // Describe (Right)
-    const describeId = createNode('describe_result', 'DESCRIBE / EXPLORE', START_X + 300, START_Y + Y_GAP, 'black', 'none');
-    createArrow(startId, describeId);
+    // Create all nodes and arrows from layout
+    createNodesFromLayout(layout);
 
-    // Compare (Left)
-    const compareId = createNode('compare_objective', 'COMPARE GROUPS', START_X - 300, START_Y + Y_GAP, 'black', 'none');
-    createArrow(startId, compareId);
+    // --- 6. Render to canvas ---
+    editor.createShapes(shapes);
 
-    // Level 3: Outcome (Child of Compare)
-    const outcomeId = createNode('outcome_type', 'SELECT OUTCOME TYPE', START_X - 300, START_Y + Y_GAP * 2, 'red', 'solid');
-    createArrow(compareId, outcomeId);
+    // Zoom to fit with improved timing and insets
+    setTimeout(() => {
+      editor.zoomToFit({
+        animation: { duration: 200 },
+        insets: { top: 50, right: 50, bottom: 50, left: 50 }
+      });
+    }, 100);
 
-    // Level 4: Branches (Continuous, Binary, Count, TTE, Ordinal)
-    const branchKeys = ['cont_time', 'bin_time', 'count_check', 'tte_type', 'ord_type'];
-    const branchLabels = ['Continuous', 'Binary', 'Count', 'Time-to-Event', 'Ordinal'];
-    
-    branchKeys.forEach((key, index) => {
-      const label = branchLabels[index];
-      // Spread logic
-      const offsetIndex = index - 2; 
-      const branchX = (START_X - 300) + (offsetIndex * (NODE_WIDTH + 60)); 
-      const branchY = START_Y + Y_GAP * 3;
-
-      const branchId = createNode(key, label, branchX, branchY, 'violet', 'semi');
-      createArrow(outcomeId, branchId);
-
-      // Level 5: Sub-options
-      const nodeData = data[key];
-      if (nodeData && nodeData.options) {
-        nodeData.options.forEach((opt, optIndex) => {
-          const subX = branchX;
-          const subY = branchY + Y_GAP + (optIndex * (NODE_HEIGHT + 20)); 
-          
-          const subId = createNode(opt.nextNodeId, opt.label, subX, subY, 'grey', 'none');
-          createArrow(branchId, subId);
-        });
+    // --- 7. Interaction handlers ---
+    editor.on('event', (e) => {
+      if (e.name === 'pointer_up') {
+        const selected = editor.getSelectedShapes();
+        if (selected.length === 1) {
+          const shape = selected[0] as any;
+          if (shape.meta && shape.meta.nodeId) {
+            onNodeClick(shape.meta.nodeId);
+          }
+        }
       }
     });
+  };
 
-    // --- 4. Render to Canvas ---
-    editor.createShapes(shapes);
-    
-    // Zoom to fit
-    setTimeout(() => {
-        editor.zoomToFit({ animation: { duration: 200 } });
-    }, 500);
-    
-    // --- 5. Interaction ---
-    editor.on('event', (e) => {
-        if (e.name === 'pointer_up') {
-            const selected = editor.getSelectedShapes();
-            if (selected.length === 1) {
-                const shape = selected[0] as any;
-                if (shape.meta && shape.meta.nodeId) {
-                    onNodeClick(shape.meta.nodeId);
-                }
-            }
-        }
-    });
+  // Control button handlers
+  const handleZoomToFit = () => {
+    if (editorRef.current) {
+      editorRef.current.zoomToFit({ animation: { duration: 300 } });
+    }
+  };
+
+  const handleZoomIn = () => {
+    if (editorRef.current) {
+      editorRef.current.zoomIn();
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (editorRef.current) {
+      editorRef.current.zoomOut();
+    }
+  };
+
+  const handleSetTool = (tool: 'select' | 'hand') => {
+    if (editorRef.current) {
+      editorRef.current.setCurrentTool(tool);
+      setCurrentTool(tool);
+    }
   };
 
   return (
     <div className="w-full h-[700px] border-2 border-ink shadow-brutal bg-white relative">
-        <Tldraw 
-            onMount={handleMount} 
+        <Tldraw
+            onMount={handleMount}
             hideUi={true}
             persistenceKey="sas-decision-tree-map" // Ensure state persists correctly
         />
+
+        {/* Control Toolbar */}
+        <div className="absolute top-4 right-4 bg-white border-1 border-ink shadow-brutal p-1 z-[1000] flex flex-col gap-1">
+          <button
+            onClick={handleZoomToFit}
+            className="px-3 py-2 hover:bg-accent transition-colors border-1 border-transparent hover:border-ink"
+            title="Fit Window"
+          >
+            <i className="fa-solid fa-expand text-ink"></i>
+          </button>
+
+          <button
+            onClick={handleZoomIn}
+            className="px-3 py-2 hover:bg-accent transition-colors border-1 border-transparent hover:border-ink"
+            title="Zoom In"
+          >
+            <i className="fa-solid fa-magnifying-glass-plus text-ink"></i>
+          </button>
+
+          <button
+            onClick={handleZoomOut}
+            className="px-3 py-2 hover:bg-accent transition-colors border-1 border-transparent hover:border-ink"
+            title="Zoom Out"
+          >
+            <i className="fa-solid fa-magnifying-glass-minus text-ink"></i>
+          </button>
+
+          <div className="h-px bg-ink/20 w-full"></div>
+
+          <button
+            onClick={() => handleSetTool('select')}
+            className={`px-3 py-2 transition-colors border-1 ${
+              currentTool === 'select'
+                ? 'bg-primary border-ink'
+                : 'border-transparent hover:bg-accent hover:border-ink'
+            }`}
+            title="Select Tool"
+          >
+            <i className="fa-solid fa-arrow-pointer text-ink"></i>
+          </button>
+
+          <button
+            onClick={() => handleSetTool('hand')}
+            className={`px-3 py-2 transition-colors border-1 ${
+              currentTool === 'hand'
+                ? 'bg-primary border-ink'
+                : 'border-transparent hover:bg-accent hover:border-ink'
+            }`}
+            title="Pan Tool"
+          >
+            <i className="fa-solid fa-hand text-ink"></i>
+          </button>
+        </div>
+
         <div className="absolute bottom-4 left-4 bg-white/90 p-2 border-1 border-ink pointer-events-none z-[1000] font-mono text-xs">
             <p className="font-bold">INTERACTIVE MAP</p>
             <p>Click nodes to navigate • Pan/Zoom to explore</p>
