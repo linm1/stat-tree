@@ -3,17 +3,17 @@ import { TreeData, DecisionNode } from '../types';
 export interface LayoutConstants {
   nodeWidth: number;
   nodeHeight: number;
-  minXGap: number;
-  yGap: number;
+  siblingGap: number;
+  levelGap: number;
   startX: number;
   startY: number;
 }
 
 export const DEFAULT_LAYOUT: LayoutConstants = {
-  nodeWidth: 180,
-  nodeHeight: 80,
-  minXGap: 15,
-  yGap: 100,
+  nodeWidth: 250,
+  nodeHeight: 70,
+  siblingGap: 10,
+  levelGap: 900,
   startX: 0,
   startY: 0,
 };
@@ -59,11 +59,50 @@ export function calculateSubtreeWidth(
 
   // Total width = number of children * nodeWidth + gaps between them
   const totalChildWidth = numChildren * constants.nodeWidth;
-  const gapWidth = (numChildren - 1) * constants.minXGap;
+  const gapWidth = (numChildren - 1) * constants.siblingGap;
   const childrenTotalWidth = totalChildWidth + gapWidth;
 
   // Return the larger of parent width or children total width
   return Math.max(constants.nodeWidth, childrenTotalWidth);
+}
+
+/**
+ * Calculate the height required for a node based on its immediate children.
+ * This represents the vertical space needed for the children layer (left-to-right layout).
+ *
+ * @param nodeId - The ID of the node to calculate height for
+ * @param data - The tree data structure
+ * @param constants - Layout constants defining spacing and dimensions
+ * @returns The height required for the node's immediate children
+ * @throws Error if node is not found in data
+ */
+export function calculateSubtreeHeight(
+  nodeId: string,
+  data: TreeData,
+  constants: LayoutConstants
+): number {
+  const node = data[nodeId];
+
+  if (!node) {
+    throw new Error(`Node with id '${nodeId}' not found in tree data`);
+  }
+
+  // Leaf node (no children) - return node height
+  if (!node.options || node.options.length === 0) {
+    return constants.nodeHeight;
+  }
+
+  // For parent nodes, calculate height based on immediate children count
+  // Children stack vertically in left-to-right layout
+  const numChildren = node.options.length;
+
+  // Total height = number of children * nodeHeight + gaps between them
+  const totalChildHeight = numChildren * constants.nodeHeight;
+  const gapHeight = (numChildren - 1) * constants.siblingGap;  // Siblings use siblingGap
+  const childrenTotalHeight = totalChildHeight + gapHeight;
+
+  // Return the larger of parent height or children total height
+  return Math.max(constants.nodeHeight, childrenTotalHeight);
 }
 
 /**
@@ -96,19 +135,56 @@ function calculateFullSubtreeWidth(
 
   // Total width = sum of all child widths + gaps
   const totalChildWidth = childWidths.reduce((sum, width) => sum + width, 0);
-  const gapWidth = (childWidths.length - 1) * constants.minXGap;
+  const gapWidth = (childWidths.length - 1) * constants.siblingGap;
   const childrenTotalWidth = totalChildWidth + gapWidth;
 
   return Math.max(constants.nodeWidth, childrenTotalWidth);
 }
 
 /**
- * Recursively position all nodes in the tree with optimal spacing.
+ * Phase 3: Helper function to recursively calculate the full subtree HEIGHT for positioning.
+ * This accounts for all descendants, unlike calculateSubtreeHeight which only counts immediate children.
+ */
+function calculateFullSubtreeHeight(
+  nodeId: string,
+  data: TreeData,
+  constants: LayoutConstants
+): number {
+  const node = data[nodeId];
+
+  if (!node) {
+    return constants.nodeHeight;
+  }
+
+  // Leaf node - return node height
+  if (!node.options || node.options.length === 0) {
+    return constants.nodeHeight;
+  }
+
+  // Get child node IDs
+  const childNodeIds = node.options.map(option => option.nextNodeId);
+
+  // Recursively calculate height for each child subtree
+  const childHeights = childNodeIds.map(childId =>
+    calculateFullSubtreeHeight(childId, data, constants)
+  );
+
+  // Total height = sum of all child heights + gaps (vertical stacking)
+  const totalChildHeight = childHeights.reduce((sum, height) => sum + height, 0);
+  const gapHeight = (childHeights.length - 1) * constants.siblingGap;  // Siblings use siblingGap
+  const childrenTotalHeight = totalChildHeight + gapHeight;
+
+  return Math.max(constants.nodeHeight, childrenTotalHeight);
+}
+
+/**
+ * Phase 3: Recursively position all nodes in the tree with optimal spacing.
+ * LEFT-TO-RIGHT LAYOUT: Tree flows horizontally (root on left, leaves on right)
  *
  * @param nodeId - The ID of the node to position
  * @param data - The tree data structure
- * @param centerX - The X coordinate to center this node at
- * @param y - The Y coordinate for this node
+ * @param x - The X coordinate for this node (horizontal position, increases with depth)
+ * @param centerY - The Y coordinate to center this node at (vertical centering)
  * @param level - The depth level of this node (0 for root)
  * @param constants - Layout constants defining spacing and dimensions
  * @returns A LayoutNode with calculated positions for the node and all descendants
@@ -117,8 +193,8 @@ function calculateFullSubtreeWidth(
 export function calculateNodePositions(
   nodeId: string,
   data: TreeData,
-  centerX: number,
-  y: number,
+  x: number,
+  centerY: number,
   level: number,
   constants: LayoutConstants
 ): LayoutNode {
@@ -128,8 +204,8 @@ export function calculateNodePositions(
     throw new Error(`Node with id '${nodeId}' not found in tree data`);
   }
 
-  // Calculate this node's position (centered at centerX)
-  const x = centerX - constants.nodeWidth / 2;
+  // Phase 3: Calculate this node's position (centered at centerY)
+  const y = centerY - constants.nodeHeight / 2;
 
   // Create the layout node
   const layoutNode: LayoutNode = {
@@ -150,42 +226,42 @@ export function calculateNodePositions(
   // Get unique child node IDs
   const childNodeIds = node.options.map(option => option.nextNodeId);
 
-  // Calculate FULL subtree widths for each child (for proper positioning)
-  const childWidths = childNodeIds.map(childId =>
-    calculateFullSubtreeWidth(childId, data, constants)
+  // Phase 3: Calculate FULL subtree HEIGHTS for each child (for proper vertical positioning)
+  const childHeights = childNodeIds.map(childId =>
+    calculateFullSubtreeHeight(childId, data, constants)
   );
 
-  // Calculate total width needed for all children
-  const totalChildWidth = childWidths.reduce((sum, width) => sum + width, 0);
-  const gapWidth = (childWidths.length - 1) * constants.minXGap;
-  const childrenTotalWidth = totalChildWidth + gapWidth;
+  // Phase 3: Calculate total HEIGHT needed for all children
+  const totalChildHeight = childHeights.reduce((sum, height) => sum + height, 0);
+  const gapHeight = (childHeights.length - 1) * constants.siblingGap;
+  const childrenTotalHeight = totalChildHeight + gapHeight;
 
-  // Start position for the first child (leftmost)
-  // Center the children group around the parent's center
-  let currentX = centerX - childrenTotalWidth / 2;
+  // Phase 3: Start position for the first child (topmost)
+  // Center the children group vertically around the parent's center
+  let currentY = centerY - childrenTotalHeight / 2;
 
-  // Position each child
-  const childY = y + constants.yGap;
+  // Phase 3: Position each child - they progress horizontally and distribute vertically
+  const childX = x + constants.levelGap;  // Children move right
   const childLevel = level + 1;
 
   childNodeIds.forEach((childId, index) => {
-    const childWidth = childWidths[index];
-    const childCenterX = currentX + childWidth / 2;
+    const childHeight = childHeights[index];
+    const childCenterY = currentY + childHeight / 2;
 
     // Recursively calculate positions for this child
     const childLayout = calculateNodePositions(
       childId,
       data,
-      childCenterX,
-      childY,
+      childX,
+      childCenterY,
       childLevel,
       constants
     );
 
     layoutNode.children.push(childLayout);
 
-    // Move to next child position
-    currentX += childWidth + constants.minXGap;
+    // Phase 3: Move to next child position (move down vertically)
+    currentY += childHeight + constants.siblingGap;
   });
 
   return layoutNode;

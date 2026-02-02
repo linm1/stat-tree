@@ -7,7 +7,7 @@ export const TREE_DATA: TreeData = {
   // ═══════════════════════════════════════════════════════════════════
   start: {
     id: 'start',
-    question: "What's your question?",
+    question: "What's the analysis?",
     description: "Define the main objective of your statistical analysis.",
     options: [
       { label: "Compare Groups", description: "Hypothesis testing between different treatment arms or cohorts.", nextNodeId: 'compare_groups' },
@@ -20,7 +20,7 @@ export const TREE_DATA: TreeData = {
   // ═══════════════════════════════════════════════════════════════════
   compare_groups: {
     id: 'compare_groups',
-    question: "Compare Groups - What type of outcome?",
+    question: "Compare Groups",
     description: "Hypothesis testing between treatment arms. Select your outcome type.",
     options: [
       { label: "Continuous", description: "Normal or near-normal data (Weight, BP, Lab Values).", nextNodeId: 'cont_time' },
@@ -60,7 +60,7 @@ run;`,
   // --- CONTINUOUS BRANCH ---
   cont_time: {
     id: 'cont_time',
-    question: "Is the data cross-sectional or longitudinal?",
+    question: "cross-sectional or longitudinal?",
     options: [
       { label: "Single Time Point", description: "Cross-sectional analysis at a specific visit.", nextNodeId: 'cont_single_groups' },
       { label: "Repeated Measures", description: "Longitudinal data across multiple visits.", nextNodeId: 'cont_repeated_data' }
@@ -68,7 +68,7 @@ run;`,
   },
   cont_single_groups: {
     id: 'cont_single_groups',
-    question: "How many groups are being compared?",
+    question: "# of groups?",
     options: [
       { label: "2 Groups", nextNodeId: 'cont_single_2g' },
       { label: "3+ Groups", nextNodeId: 'cont_single_3g' },
@@ -77,7 +77,7 @@ run;`,
   },
   cont_single_2g: {
     id: 'cont_single_2g',
-    question: "Are the samples paired or unpaired?",
+    question: "paired or unpaired?",
     options: [
       { label: "Unpaired (Independent)", nextNodeId: 'cont_ttest' },
       { label: "Paired (Related)", nextNodeId: 'cont_paired' },
@@ -172,9 +172,9 @@ run;`
   },
   cont_repeated_data: {
     id: 'cont_repeated_data',
-    question: "Is your data balanced (no missing values)?",
+    question: "no missing values?",
     options: [
-      { label: "Balanced (No Missing)", nextNodeId: 'cont_repeated_glm' },
+      { label: "No Missing", nextNodeId: 'cont_repeated_glm' },
       { label: "Missing Data / Unbalanced", nextNodeId: 'cont_repeated_mixed' }
     ]
   },
@@ -227,7 +227,7 @@ run;`
   // --- BINARY BRANCH ---
   bin_time: {
     id: 'bin_time',
-    question: "Is the data single timepoint or repeated measures?",
+    question: "single timepoint or repeated measures?",
     options: [
       { label: "Single Time Point", nextNodeId: 'bin_single_type' },
       { label: "Repeated Measures", nextNodeId: 'bin_rep_type' }
@@ -265,7 +265,7 @@ run;`
   },
   bin_logistic: {
     id: 'bin_logistic',
-    question: "Logistic Regression / Risk Models",
+    question: "Logistic Reg / Risk Models",
     result: {
       procedures: ['PROC LOGISTIC', 'PROC GENMOD'],
       briefing: "Used for adjusting the odds ratio or risk difference for multiple covariates.",
@@ -291,7 +291,7 @@ run;`
   },
   bin_rep_type: {
     id: 'bin_rep_type',
-    question: "What is the focus of your inference?",
+    question: "What's your inference?",
     options: [
       { label: "Population-Average (Marginal)", nextNodeId: 'bin_gee' },
       { label: "Subject-Specific (Conditional)", nextNodeId: 'bin_glmm' }
@@ -339,11 +339,11 @@ run;`
   // --- COUNT BRANCH ---
   count_check: {
     id: 'count_check',
-    question: "Check for Overdispersion (Variance >> Mean)",
+    question: "Check for Overdispersion",
     options: [
-      { label: "Variance ≈ Mean (Poisson)", nextNodeId: 'count_poisson' },
-      { label: "Variance >> Mean (NegBinomial)", nextNodeId: 'count_nb' },
-      { label: "Repeated Counts (Longitudinal)", nextNodeId: 'count_rep' }
+      { label: "Variance ≈ Mean", nextNodeId: 'count_poisson' },
+      { label: "Variance >> Mean", nextNodeId: 'count_nb' },
+      { label: "Repeated Counts", nextNodeId: 'count_rep' }
     ]
   },
   count_poisson: {
@@ -367,7 +367,7 @@ run;`
   },
   count_nb: {
     id: 'count_nb',
-    question: "Negative Binomial Regression",
+    question: "Negative Binomial Reg",
     result: {
       procedures: ['PROC GENMOD'],
       briefing: "The standard for AE counts or exacerbations where overdispersion is present.",
@@ -405,9 +405,9 @@ run;`
   // --- TTE BRANCH ---
   tte_type: {
     id: 'tte_type',
-    question: "Type of time-to-event event?",
+    question: "Type of time-to-event?",
     options: [
-      { label: "Single Event (Death/Progression)", nextNodeId: 'tte_single' },
+      { label: "Single Event", nextNodeId: 'tte_single' },
       { label: "Recurrent Events", nextNodeId: 'tte_recurrent' }
     ]
   },
@@ -475,10 +475,10 @@ run;`
   // --- ORDINAL BRANCH ---
   ord_type: {
     id: 'ord_type',
-    question: "Is the categorical data ordered or nominal?",
+    question: "categorical data or nominal?",
     options: [
-      { label: "Ordinal (Ordered)", nextNodeId: 'ord_analysis' },
-      { label: "Nominal (Unordered)", nextNodeId: 'ord_nominal' }
+      { label: "Ordinal", nextNodeId: 'ord_analysis' },
+      { label: "Nominal", nextNodeId: 'ord_nominal' }
     ]
   },
   ord_analysis: {

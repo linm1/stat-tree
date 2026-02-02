@@ -22,6 +22,16 @@ import {
   DEFAULT_LAYOUT,
   LayoutNode
 } from './utils/treeLayout';
+import { truncateText } from './utils/textHelpers';
+import { addIconToText } from './utils/nodeIcons';
+import {
+  ExpansionState,
+  createInitialExpansionState,
+  toggleNodeExpansion,
+  isNodeVisible,
+  hasChildren
+} from './utils/expansionState';
+import { determineClickAction } from './utils/clickBehavior';
 
 // --- Tldraw Map Component ---
 
@@ -42,20 +52,25 @@ interface TldrawMapViewProps {
 const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
   const [isMounted, setIsMounted] = useState(false);
   const editorRef = useRef<Editor | null>(null);
+  const layoutRef = useRef<LayoutNode | null>(null);
+  const handlerRegisteredRef = useRef<boolean>(false);
   const [currentTool, setCurrentTool] = useState<string>('select');
+  const [expansionState, setExpansionState] = useState<ExpansionState>(
+    createInitialExpansionState()
+  );
+  const [isAnimating, setIsAnimating] = useState(false);
 
   const handleMount = (editor: Editor) => {
     // Store editor reference
     editorRef.current = editor;
 
-    // Track tool changes
-    const handleToolChange = () => {
-      const toolId = editor.getCurrentToolId();
-      setCurrentTool(toolId);
-    };
+    // Only set mounted if not already mounted (prevent re-registration)
+    if (!handlerRegisteredRef.current) {
+      setIsMounted(true);
+    }
 
-    editor.on('event', handleToolChange);
-    handleToolChange(); // Set initial tool
+    // Set initial tool state
+    setCurrentTool(editor.getCurrentToolId());
     // --- 1. Initialize shape collection and helpers ---
     const shapes: any[] = [];
     const makeId = (id: string) => createShapeId(`node-${id}`);
@@ -67,9 +82,18 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
       x: number,
       y: number,
       color: string = 'grey',
-      fill: string = 'none'
+      fill: string = 'none',
+      isExpandable: boolean = false,
+      isExpanded: boolean = false
     ) => {
       const shapeId = makeId(id);
+
+      // Add expand/collapse icon to text if node is expandable
+      let displayText = truncateText(text);
+      if (isExpandable) {
+        displayText = addIconToText(truncateText(text), isExpandable, isExpanded);
+      }
+
       shapes.push({
         id: shapeId,
         type: 'geo',
@@ -82,14 +106,16 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
           color,
           fill,
           dash: 'solid',
-          size: 'm',
-          font: 'mono',
-          text,
+          size: 's',
+          font: 'sans',
+          text: displayText,
           align: 'middle',
           verticalAlign: 'middle',
         },
         meta: {
-          nodeId: id
+          nodeId: id,
+          isExpandable,
+          isExpanded
         }
       });
       return shapeId;
@@ -111,15 +137,16 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
         return;
       }
 
-      // Calculate connection points (centers)
-      const parentCenterX = startNode.x + startNode.props.w / 2;
-      const parentBottomY = startNode.y + startNode.props.h;
-      const childCenterX = endNode.x + endNode.props.w / 2;
-      const childTopY = endNode.y;
+      // Calculate connection points for LEFT-TO-RIGHT layout
+      // Parent connects from RIGHT center, child connects from LEFT center
+      const parentRightX = startNode.x + startNode.props.w;
+      const parentCenterY = startNode.y + startNode.props.h / 2;
+      const childLeftX = endNode.x;
+      const childCenterY = endNode.y + endNode.props.h / 2;
 
-      // Midpoint Y position (40% of the gap)
-      const midGap = DEFAULT_LAYOUT.yGap * 0.4;
-      const midY = parentBottomY + midGap;
+      // Midpoint X position (40% of the gap)
+      const midGap = DEFAULT_LAYOUT.levelGap * 0.4;
+      const midX = parentRightX + midGap;
 
       // Get arrow style based on level
       const style = getArrowStyle(level);
@@ -127,14 +154,14 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
       // Create unique base ID for this edge
       const baseId = `edge-${startId.id || startId}-${endId.id || endId}`;
 
-      // Create 3 line segments for orthogonal path:
-      // 1. Vertical line from parent bottom to midpoint
+      // Create 3 line segments for orthogonal path (H-V-H pattern):
+      // 1. Horizontal line from parent right to midpoint X
       shapes.push({
-        id: createShapeId(`${baseId}-v1`),
+        id: createShapeId(`${baseId}-h1`),
         type: 'arrow',
         props: {
-          start: { x: parentCenterX, y: parentBottomY },
-          end: { x: parentCenterX, y: midY },
+          start: { x: parentRightX, y: parentCenterY },
+          end: { x: midX, y: parentCenterY },
           bend: 0,
           color: style.color,
           size: 's',
@@ -144,43 +171,51 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
         },
       });
 
-      // 2. Horizontal line from parent X to child X at midpoint
-      shapes.push({
-        id: createShapeId(`${baseId}-h`),
-        type: 'arrow',
-        props: {
-          start: { x: parentCenterX, y: midY },
-          end: { x: childCenterX, y: midY },
-          bend: 0,
-          color: style.color,
-          size: 's',
-          dash: style.dash,
-          arrowheadStart: 'none',
-          arrowheadEnd: 'none',
-          text: label || '',
-          font: 'mono',
-        },
-      });
+      // 2. Vertical line from parent Y to child Y at midpoint X
+      // Only create if there's meaningful vertical distance (avoid zero-length segments)
+      if (Math.abs(parentCenterY - childCenterY) > 2) {
+        shapes.push({
+          id: createShapeId(`${baseId}-v`),
+          type: 'arrow',
+          props: {
+            start: { x: midX, y: parentCenterY },
+            end: { x: midX, y: childCenterY },
+            bend: 0,
+            color: style.color,
+            size: 's',
+            dash: style.dash,
+            arrowheadStart: 'none',
+            arrowheadEnd: 'none',
+          },
+        });
+      }
 
-      // 3. Vertical line from midpoint to child top (with arrowhead)
+      // 3. Horizontal line from midpoint X to child left (with arrowhead and label)
       shapes.push({
-        id: createShapeId(`${baseId}-v2`),
+        id: createShapeId(`${baseId}-h2`),
         type: 'arrow',
         props: {
-          start: { x: childCenterX, y: midY },
-          end: { x: childCenterX, y: childTopY },
+          start: { x: midX, y: childCenterY },
+          end: { x: childLeftX, y: childCenterY },
           bend: 0,
           color: style.color,
           size: 's',
           dash: style.dash,
           arrowheadStart: 'none',
           arrowheadEnd: 'arrow',
+          text: label || '',
+          font: 'mono',
         },
       });
     };
 
     // --- 4. Recursive function to create nodes from layout ---
     const createNodesFromLayout = (layoutNode: LayoutNode, maxDepth: number = MAX_MAP_DEPTH): void => {
+      // Phase 2: Check visibility before creating node
+      if (!isNodeVisible(layoutNode.id, layoutNode, expansionState, data)) {
+        return; // Skip this node and its children
+      }
+
       // Determine node color and fill based on node ID and layer
       // Layer 1: start (black, solid)
       // Layer 2: compare_groups (blue, solid), describe_explore (green, solid - result node)
@@ -209,6 +244,12 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
       // Get node text from TREE_DATA
       const nodeText = data[layoutNode.id]?.question || layoutNode.id;
 
+      // Check if node has children (is expandable)
+      const isExpandableNode = hasChildren(layoutNode.id, data);
+
+      // Phase 3: Check if node is expanded
+      const isExpanded = expansionState.expandedNodes.has(layoutNode.id);
+
       // Create the node shape
       const nodeId = createNode(
         layoutNode.id,
@@ -216,7 +257,9 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
         layoutNode.x,
         layoutNode.y,
         color,
-        fill
+        fill,
+        isExpandableNode,
+        isExpanded
       );
 
       // STOP RECURSION at max depth - don't create children beyond this level
@@ -224,28 +267,32 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
         return;
       }
 
-      // Recursively create children and arrows
-      layoutNode.children.forEach((child, index) => {
-        // Create child node first (with maxDepth parameter)
-        createNodesFromLayout(child, maxDepth);
+      // Phase 2: Only process children if this node is expanded
+      if (expansionState.expandedNodes.has(layoutNode.id)) {
+        layoutNode.children.forEach((child, index) => {
+          // Create child node first (with maxDepth parameter)
+          createNodesFromLayout(child, maxDepth);
 
-        // Create curved arrow to child
-        const childNodeId = makeId(child.id);
+          // Phase 2: Create edge only if child is visible
+          if (isNodeVisible(child.id, child, expansionState, data)) {
+            const childNodeId = makeId(child.id);
 
-        // Get arrow label from options
-        const label = data[layoutNode.id]?.options?.find(
-          opt => opt.nextNodeId === child.id
-        )?.label;
+            // Get arrow label from options
+            const label = data[layoutNode.id]?.options?.find(
+              opt => opt.nextNodeId === child.id
+            )?.label;
 
-        createOrthogonalEdge(
-          nodeId,
-          childNodeId,
-          label,
-          child.level,
-          index,
-          layoutNode.children.length
-        );
-      });
+            createOrthogonalEdge(
+              nodeId,
+              childNodeId,
+              label,
+              child.level,
+              index,
+              layoutNode.children.length
+            );
+          }
+        });
+      }
     };
 
     // --- 5. Build the tree using layout utilities ---
@@ -262,33 +309,358 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
       DEFAULT_LAYOUT
     );
 
+    // Store layout in ref for incremental updates
+    layoutRef.current = layout;
+
     // Create all nodes and arrows from layout
     createNodesFromLayout(layout);
 
     // --- 6. Render to canvas ---
     editor.createShapes(shapes);
 
-    // Zoom to fit with improved timing and insets
+    // Zoom to fit with improved timing
     setTimeout(() => {
       editor.zoomToFit({
-        animation: { duration: 200 },
-        insets: { top: 50, right: 50, bottom: 50, left: 50 }
+        animation: { duration: 200 }
       });
     }, 100);
+  };
 
-    // --- 7. Interaction handlers ---
-    editor.on('event', (e) => {
-      if (e.name === 'pointer_up') {
-        const selected = editor.getSelectedShapes();
-        if (selected.length === 1) {
-          const shape = selected[0] as any;
-          if (shape.meta && shape.meta.nodeId) {
-            onNodeClick(shape.meta.nodeId);
-          }
+  // Helper function: Find layout node by ID in tree
+  const findLayoutNode = (nodeId: string, layout: LayoutNode | null): LayoutNode | null => {
+    if (!layout) return null;
+    if (layout.id === nodeId) return layout;
+
+    for (const child of layout.children) {
+      const found = findLayoutNode(nodeId, child);
+      if (found) return found;
+    }
+
+    return null;
+  };
+
+  // Helper function: Get all descendant node IDs
+  const getAllDescendants = (nodeId: string, treeData: TreeData): string[] => {
+    const node = treeData[nodeId];
+    if (!node.options || node.options.length === 0) return [];
+
+    const descendants: string[] = [];
+    for (const option of node.options) {
+      const childId = option.nextNodeId;
+      descendants.push(childId);
+      descendants.push(...getAllDescendants(childId, treeData));
+    }
+
+    return descendants;
+  };
+
+  // Helper function: Update node icon (expand/collapse indicator)
+  const updateNodeIcon = (nodeId: string, isExpanded: boolean) => {
+    if (!editorRef.current) return;
+
+    const editor = editorRef.current;
+    const shapeId = createShapeId(`node-${nodeId}`);
+    const shape = editor.getShape(shapeId);
+
+    if (!shape || !shape.props.text) return;
+
+    const text = shape.props.text as string;
+    const icon = isExpanded ? '▼' : '▶';
+
+    // Replace icon in text
+    const newText = text.replace(/^[▶▼]\s/, `${icon} `);
+
+    editor.updateShapes([{
+      id: shapeId,
+      type: 'geo',
+      props: { text: newText }
+    }]);
+  };
+
+  // Helper function: Animate shapes in with staggered fade
+  const animateShapesIn = (shapeIds: string[]) => {
+    if (!editorRef.current || shapeIds.length === 0) return;
+
+    const editor = editorRef.current;
+
+    // Stagger fade-in animation
+    shapeIds.forEach((id, index) => {
+      setTimeout(() => {
+        const shape = editor.getShape(id);
+        if (shape) {
+          editor.updateShapes([{
+            id,
+            type: shape.type,
+            opacity: 1
+          }]);
         }
-      }
+      }, index * 50);
     });
   };
+
+  // Helper function: Zoom to node bounds
+  const focusOnNode = (nodeId: string) => {
+    if (!editorRef.current) return;
+
+    const editor = editorRef.current;
+    const shapeId = createShapeId(`node-${nodeId}`);
+    const shape = editor.getShape(shapeId);
+
+    if (!shape) return;
+
+    const bounds = editor.getShapePageBounds(shape);
+    if (!bounds) return;
+
+    const paddedBounds = {
+      x: bounds.x - 100,
+      y: bounds.y - 100,
+      w: bounds.w + 200,
+      h: bounds.h + 200
+    };
+
+    editor.zoomToBounds(paddedBounds, {
+      animation: { duration: 500 }
+    });
+  };
+
+  // Helper function: Create node shape (for incremental updates)
+  const createNodeShape = (
+    id: string,
+    text: string,
+    x: number,
+    y: number,
+    color: string,
+    isExpandable: boolean,
+    isExpanded: boolean
+  ) => {
+    const shapeId = createShapeId(`node-${id}`);
+    let displayText = truncateText(text);
+    if (isExpandable) {
+      displayText = addIconToText(displayText, isExpandable, isExpanded);
+    }
+
+    return {
+      id: shapeId,
+      type: 'geo',
+      x,
+      y,
+      props: {
+        w: DEFAULT_LAYOUT.nodeWidth,
+        h: DEFAULT_LAYOUT.nodeHeight,
+        geo: 'rectangle',
+        color,
+        fill: 'none',
+        dash: 'solid',
+        size: 's',
+        font: 'sans',
+        text: displayText,
+        align: 'middle',
+        verticalAlign: 'middle',
+      },
+      meta: {
+        nodeId: id,
+        isExpandable,
+        isExpanded
+      }
+    };
+  };
+
+  // Helper function: Create orthogonal edge shape
+  const createOrthogonalEdgeShape = (
+    startId: any,
+    endId: any,
+    edgeRouting: { horizontal: { x1: number; x2: number; y: number }; vertical: { x: number; y1: number; y2: number } } | null
+  ) => {
+    const shapes: any[] = [];
+
+    if (edgeRouting) {
+      // Horizontal segment
+      shapes.push({
+        id: createShapeId(`edge-h-${endId}`),
+        type: 'arrow',
+        props: {
+          start: { x: edgeRouting.horizontal.x1, y: edgeRouting.horizontal.y },
+          end: { x: edgeRouting.horizontal.x2, y: edgeRouting.horizontal.y },
+          bend: 0,
+          color: 'grey',
+          size: 's',
+          arrowheadStart: 'none',
+          arrowheadEnd: 'none'
+        }
+      });
+
+      // Vertical segment
+      shapes.push({
+        id: createShapeId(`edge-v-${endId}`),
+        type: 'arrow',
+        props: {
+          start: { x: edgeRouting.vertical.x, y: edgeRouting.vertical.y1 },
+          end: { x: edgeRouting.vertical.x, y: edgeRouting.vertical.y2 },
+          bend: 0,
+          color: 'grey',
+          size: 's',
+          arrowheadStart: 'none',
+          arrowheadEnd: 'arrow'
+        }
+      });
+    }
+
+    return shapes;
+  };
+
+  // Incremental shape update function
+  const updateShapesForExpansionChange = (
+    clickedNodeId: string,
+    newExpansionState: ExpansionState
+  ) => {
+    if (!editorRef.current) return;
+
+    const editor = editorRef.current;
+    const node = data[clickedNodeId];
+
+    const isExpanded = newExpansionState.expandedNodes.has(clickedNodeId);
+
+    if (isExpanded) {
+      // EXPANDING: Add children shapes
+      const childShapes: any[] = [];
+
+      node.options?.forEach(opt => {
+        const childNode = data[opt.nextNodeId];
+        const childLayout = findLayoutNode(opt.nextNodeId, layoutRef.current);
+
+        if (!childLayout) return;
+
+        // Create child shape
+        const childShape = createNodeShape(
+          childLayout.id,
+          childNode.question,
+          childLayout.x,
+          childLayout.y,
+          'grey',
+          hasChildren(opt.nextNodeId, data),
+          false
+        );
+
+        childShapes.push(childShape);
+
+        // Create edge
+        const edgeShapes = createOrthogonalEdgeShape(
+          createShapeId(`node-${clickedNodeId}`),
+          childLayout.id,
+          childLayout.incomingEdge
+        );
+
+        childShapes.push(...edgeShapes);
+      });
+
+      // Create all shapes at once
+      editor.createShapes(childShapes);
+
+      // Animate new shapes
+      const shapeIds = childShapes
+        .filter(s => s.type === 'geo')
+        .map(s => s.id);
+      animateShapesIn(shapeIds);
+
+      // Zoom to expanded content
+      setTimeout(() => focusOnNode(clickedNodeId), 100);
+
+    } else {
+      // COLLAPSING: Remove descendant shapes
+      const descendants = getAllDescendants(clickedNodeId, data);
+      const shapeIdsToDelete = descendants.flatMap(id =>
+        [
+          createShapeId(`node-${id}`),
+          createShapeId(`edge-${id}`),
+          createShapeId(`edge-h-${id}`),
+          createShapeId(`edge-v-${id}`)
+        ]
+      );
+
+      editor.deleteShapes(shapeIdsToDelete);
+
+      // Zoom to parent
+      setTimeout(() => focusOnNode(clickedNodeId), 100);
+    }
+
+    // Update expand/collapse icon on clicked node
+    updateNodeIcon(clickedNodeId, isExpanded);
+  };
+
+  // Handle node click
+  const handleNodeClick = (nodeId: string) => {
+    const node = data[nodeId];
+
+    // Ignore clicks during animation
+    if (isAnimating) return;
+
+    // Prevent collapsing root node (always expanded)
+    if (nodeId === 'start' && expansionState.expandedNodes.has('start')) {
+      return;
+    }
+
+    // Check if expandable
+    if (!node.options || node.options.length === 0) {
+      onNodeClick(nodeId); // Leaf node - show result panel
+      return;
+    }
+
+    // Set animating flag
+    setIsAnimating(true);
+
+    // Update expansion state using functional update to access latest state
+    setExpansionState(prevState => {
+      const newState = toggleNodeExpansion(nodeId, prevState, data);
+
+      // Schedule shape update AFTER state is committed
+      requestAnimationFrame(() => {
+        updateShapesForExpansionChange(nodeId, newState);
+      });
+
+      return newState;
+    });
+
+    // Reset animation flag after animation completes
+    setTimeout(() => setIsAnimating(false), 600);
+  };
+
+  // Register event handler once using useEffect
+  useEffect(() => {
+    if (!isMounted || !editorRef.current || handlerRegisteredRef.current) return;
+
+    const editor = editorRef.current;
+
+    // Event handler using LATEST state via functional setState
+    const handleEvent = (e: any) => {
+      // Track tool changes
+      const toolId = editor.getCurrentToolId();
+      setCurrentTool(toolId);
+
+      // Handle pointer_up events
+      if (e.name !== 'pointer_up') return;
+
+      // Check if select tool is active
+      if (toolId !== 'select') return;
+
+      const selected = editor.getSelectedShapes();
+      if (selected.length !== 1) return;
+
+      const shape = selected[0] as any;
+      if (!shape.meta || !shape.meta.nodeId) return;
+
+      handleNodeClick(shape.meta.nodeId);
+    };
+
+    // Register listener
+    editor.on('event', handleEvent);
+    handlerRegisteredRef.current = true;
+
+    // Cleanup function - CRITICAL!
+    return () => {
+      editor.off('event', handleEvent);
+      handlerRegisteredRef.current = false;
+    };
+  }, [isMounted]); // Run when isMounted changes to true
 
   // Control button handlers
   const handleZoomToFit = () => {
@@ -317,7 +689,7 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
   };
 
   return (
-    <div className="w-full h-[700px] border-2 border-ink shadow-brutal bg-white relative">
+    <div className="w-full min-h-[600px] h-[calc(100vh-300px)] max-h-[1200px] border-2 border-ink shadow-brutal bg-white relative">
         <Tldraw
             onMount={handleMount}
             hideUi={true}

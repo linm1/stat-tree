@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Sparkles, X, Minimize2, Maximize2, Terminal, Globe, User, Bot, Loader2 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { DecisionNode } from '../types';
 
 interface Message {
@@ -45,8 +45,16 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ currentNode, history, brea
     setIsLoading(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
+      // @ts-ignore - process.env is polyfilled in index.html
+      // Use process.env for tests, import.meta.env for production
+      const apiKey = process.env.API_KEY || (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_GEMINI_API_KEY : undefined);
+
+      if (!apiKey) {
+        throw new Error('API key not configured');
+      }
+
+      const ai = new GoogleGenerativeAI(apiKey);
+
       // Prepare context from current app state
       const contextStr = `
         Current Decision Path: ${breadcrumbs.join(' > ')}
@@ -55,42 +63,31 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ currentNode, history, brea
         Sample Code: ${currentNode.result.examples.map(e => e.code).join('\n')}` : ''}
       `;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
-        contents: [
-          {
-            role: 'user',
-            parts: [{
-              text: `You are a World-Class SAS Clinical Programmer and Statistician. 
-              Use the following context to help the user:
-              [CONTEXT]
-              ${contextStr}
-              [/CONTEXT]
-              
-              User Question: ${userMessage}
-              
-              If they ask for code, provide production-ready SAS scripts following CDISC standards where applicable. 
-              Use your web search tool if you need to verify latest FDA guidance or SAS documentation.`
-            }]
-          }
-        ],
-        config: {
-          tools: [{ googleSearch: {} }],
-        },
-      });
+      const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
-      const text = response.text || "I'm sorry, I couldn't generate a response.";
-      const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
-        ?.filter(chunk => chunk.web)
-        ?.map(chunk => ({
-          title: chunk.web?.title || 'Source',
-          uri: chunk.web?.uri || '#'
-        })) || [];
+      const prompt = `You are a World-Class SAS Clinical Programmer and Statistician.
+Use the following context to help the user:
+[CONTEXT]
+${contextStr}
+[/CONTEXT]
 
-      setMessages(prev => [...prev, { role: 'model', text, sources }]);
+User Question: ${userMessage}
+
+If they ask for code, provide production-ready SAS scripts following CDISC standards where applicable.`;
+
+      const result = await model.generateContent(prompt);
+      const response = result.response;
+      const text = response.text() || "I'm sorry, I couldn't generate a response.";
+
+      setMessages(prev => [...prev, { role: 'model', text }]);
     } catch (error) {
       console.error("Chat Error:", error);
-      setMessages(prev => [...prev, { role: 'model', text: "An error occurred while connecting to the SAS Intelligence engine. Please check your connection." }]);
+      setMessages(prev => [...prev, {
+        role: 'model',
+        text: error instanceof Error && error.message.includes('API key')
+          ? "AI features require an API key. Set VITE_GEMINI_API_KEY in your .env file or configure it in the environment."
+          : "An error occurred while connecting to the AI engine. Please check your connection."
+      }]);
     } finally {
       setIsLoading(false);
     }

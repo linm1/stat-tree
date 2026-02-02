@@ -23,7 +23,7 @@ describe('TREE_DATA - Comprehensive Clinical Trial Decision Tree', () => {
     });
 
     it('should have "start" with correct question', () => {
-      expect(TREE_DATA.start.question).toBe("What's your question?");
+      expect(TREE_DATA.start.question).toBe("What's the analysis?");
     });
 
     it('should have exactly 2 options: Compare Groups and Describe/Explore', () => {
@@ -59,8 +59,8 @@ describe('TREE_DATA - Comprehensive Clinical Trial Decision Tree', () => {
         expect(TREE_DATA).toHaveProperty('compare_groups');
       });
 
-      it('compare_groups should have "Compare Groups - What type of outcome?" as question text', () => {
-        expect(TREE_DATA.compare_groups.question).toBe('Compare Groups - What type of outcome?');
+      it('compare_groups should have "Compare Groups" as question text', () => {
+        expect(TREE_DATA.compare_groups.question).toBe('Compare Groups');
       });
 
       it('compare_groups should have 5 outcome type options', () => {
@@ -154,8 +154,8 @@ describe('TREE_DATA - Comprehensive Clinical Trial Decision Tree', () => {
     /**
      * Compact Layer Structure (outcome_type removed):
      *
-     * Layer 1: start ("What's your question?")
-     * Layer 2: compare_groups ("Compare Groups - What type of outcome?") | describe_explore ("Describe / Explore" - result)
+     * Layer 1: start ("What's the analysis?")
+     * Layer 2: compare_groups ("Compare Groups") | describe_explore ("Describe / Explore" - result)
      * Layer 3: cont_time, bin_time, count_check, tte_type, ord_type (the 5 outcome branches)
      * Layer 4+: Deeper analysis nodes
      *
@@ -280,18 +280,16 @@ describe('TREE_DATA - Comprehensive Clinical Trial Decision Tree', () => {
       expect(TREE_DATA.count_check.options).toBeDefined();
       const options = TREE_DATA.count_check.options || [];
 
-      // Should check for Poisson vs Negative Binomial based on overdispersion
-      const hasPoisson = options.some(opt =>
-        opt.label.toLowerCase().includes('poisson') ||
-        opt.description?.toLowerCase().includes('poisson')
+      // Should check for overdispersion options (variance vs mean comparison)
+      const hasVarianceMean = options.some(opt =>
+        opt.label.toLowerCase().includes('variance') ||
+        opt.label.toLowerCase().includes('mean')
       );
-      const hasNegBinomial = options.some(opt =>
-        opt.label.toLowerCase().includes('negbin') ||
-        opt.label.toLowerCase().includes('negative') ||
-        opt.description?.toLowerCase().includes('negbin')
+      const hasRepeated = options.some(opt =>
+        opt.label.toLowerCase().includes('repeated')
       );
 
-      expect(hasPoisson || hasNegBinomial).toBe(true);
+      expect(hasVarianceMean || hasRepeated).toBe(true);
     });
   });
 
