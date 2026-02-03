@@ -624,7 +624,11 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
   const createOrthogonalEdgeShape = (
     startId: any,
     endId: any,
-    edgeRouting: { horizontal: { x1: number; x2: number; y: number }; vertical: { x: number; y1: number; y2: number } } | null,
+    edgeRouting: {
+      horizontal1: { x1: number; x2: number; y: number };
+      vertical: { x: number; y1: number; y2: number };
+      horizontal2: { x1: number; x2: number; y: number };
+    } | null,
     parentNodeId: string,
     childNodeId: string
   ) => {
@@ -636,13 +640,13 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
       const edgeColor = isHighlighted ? 'orange' : 'grey';
       const edgeSize = isHighlighted ? 'm' : 's';
 
-      // Horizontal segment
+      // Horizontal segment 1 (h1): parent right to midpoint
       shapes.push({
-        id: createShapeId(`edge-h-${endId}`),
+        id: createShapeId(`edge-h1-${endId}`),
         type: 'arrow',
         props: {
-          start: { x: edgeRouting.horizontal.x1, y: edgeRouting.horizontal.y },
-          end: { x: edgeRouting.horizontal.x2, y: edgeRouting.horizontal.y },
+          start: { x: edgeRouting.horizontal1.x1, y: edgeRouting.horizontal1.y },
+          end: { x: edgeRouting.horizontal1.x2, y: edgeRouting.horizontal1.y },
           bend: 0,
           color: edgeColor,
           size: edgeSize,
@@ -651,13 +655,31 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
         }
       });
 
-      // Vertical segment
+      // Vertical segment (v): parent Y to child Y at midpoint
+      // Only create if there's meaningful vertical distance (avoid zero-length segments)
+      if (Math.abs(edgeRouting.vertical.y1 - edgeRouting.vertical.y2) > 2) {
+        shapes.push({
+          id: createShapeId(`edge-v-${endId}`),
+          type: 'arrow',
+          props: {
+            start: { x: edgeRouting.vertical.x, y: edgeRouting.vertical.y1 },
+            end: { x: edgeRouting.vertical.x, y: edgeRouting.vertical.y2 },
+            bend: 0,
+            color: edgeColor,
+            size: edgeSize,
+            arrowheadStart: 'none',
+            arrowheadEnd: 'none'
+          }
+        });
+      }
+
+      // Horizontal segment 2 (h2): midpoint to child left (with arrowhead)
       shapes.push({
-        id: createShapeId(`edge-v-${endId}`),
+        id: createShapeId(`edge-h2-${endId}`),
         type: 'arrow',
         props: {
-          start: { x: edgeRouting.vertical.x, y: edgeRouting.vertical.y1 },
-          end: { x: edgeRouting.vertical.x, y: edgeRouting.vertical.y2 },
+          start: { x: edgeRouting.horizontal2.x1, y: edgeRouting.horizontal2.y },
+          end: { x: edgeRouting.horizontal2.x2, y: edgeRouting.horizontal2.y },
           bend: 0,
           color: edgeColor,
           size: edgeSize,
@@ -721,8 +743,9 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
           const midX = parentRightX + midGap;
 
           const edgeRouting = {
-            horizontal: { x1: parentRightX, x2: midX, y: parentCenterY },
-            vertical: { x: midX, y1: parentCenterY, y2: childCenterY }
+            horizontal1: { x1: parentRightX, x2: midX, y: parentCenterY },
+            vertical: { x: midX, y1: parentCenterY, y2: childCenterY },
+            horizontal2: { x1: midX, x2: childLeftX, y: childCenterY }
           };
 
           // Create edge with highlighting support
@@ -761,6 +784,8 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
           createShapeId(`node-${id}`),
           createShapeId(`edge-${id}`),
           createShapeId(`edge-h-${id}`),
+          createShapeId(`edge-h1-${id}`),
+          createShapeId(`edge-h2-${id}`),
           createShapeId(`edge-v-${id}`)
         ]
       );
