@@ -208,17 +208,17 @@ describe('Phase 4: Edge Routing Integration Tests', () => {
   });
 
   describe('Label Placement', () => {
-    it('places label on vertical segment (segment 2)', () => {
-      // Labels should appear on the vertical segment (middle of edge)
-      const segment2 = {
-        start: { x: 360, y: 235 },
-        end: { x: 360, y: 335 },
-        text: 'Test Label',
+    it('should NOT display labels on edges in Map view', () => {
+      // Edge labels are intentionally hidden in Map view for cleaner visualization
+      // Labels are only shown in the interactive Flow view
+      const segment3 = {
+        start: { x: 360, y: 335 },
+        end: { x: 400, y: 335 },
+        arrowheadEnd: 'arrow',
+        text: '',  // No label should be shown on Map view edges
       };
 
-      expect(segment2.text).toBe('Test Label');
-      // Vertical segment has same X coordinates
-      expect(segment2.start.x).toBe(segment2.end.x);
+      expect(segment3.text).toBe('');
     });
   });
 

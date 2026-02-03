@@ -203,7 +203,7 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
           dash: style.dash,
           arrowheadStart: 'none',
           arrowheadEnd: 'arrow',
-          text: label || '',
+          text: '',
           font: 'mono',
         },
       });
