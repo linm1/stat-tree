@@ -299,7 +299,7 @@ const ARROW_STYLES = {
  * Style configuration for highlighted edges/nodes
  */
 export const HIGHLIGHT_STYLE = {
-  color: '#F59E0B',      // Amber/orange hex color
+  color: 'orange',       // Tldraw named color (closest to amber)
   strokeWidth: 4,        // Thicker than normal (4)
   dash: 'solid' as const // 'solid' for highlighted
 };

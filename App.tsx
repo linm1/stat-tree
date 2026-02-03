@@ -81,6 +81,13 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
     }
   }, [selectedNodeId, data]);
 
+  // Re-apply highlighting when highlighted path changes
+  useEffect(() => {
+    if (editorRef.current && isMounted) {
+      reapplyHighlighting();
+    }
+  }, [highlightedPath, highlightedEdges, isMounted]);
+
   const handleMount = (editor: Editor) => {
     // Store editor reference
     editorRef.current = editor;
@@ -105,7 +112,8 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
       color: string = 'grey',
       fill: string = 'none',
       isExpandable: boolean = false,
-      isExpanded: boolean = false
+      isExpanded: boolean = false,
+      dash: 'solid' | 'dashed' = 'solid'
     ) => {
       const shapeId = makeId(id);
 
@@ -126,7 +134,7 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
           geo: 'rectangle',
           color,
           fill,
-          dash: 'solid',
+          dash,
           size: 's',
           font: 'sans',
           text: displayText,
@@ -177,6 +185,9 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
       // Get arrow style based on level and highlight state
       const style = getArrowStyleWithHighlight(level, isHighlighted);
 
+      // Use correct size based on highlighting: 'm' if highlighted, 's' otherwise
+      const edgeSize = isHighlighted ? 'm' : 's';
+
       // Create unique base ID for this edge
       const baseId = `edge-${startId.id || startId}-${endId.id || endId}`;
 
@@ -190,7 +201,7 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
           end: { x: midX, y: parentCenterY },
           bend: 0,
           color: style.color,
-          size: 's',
+          size: edgeSize,
           dash: style.dash,
           arrowheadStart: 'none',
           arrowheadEnd: 'none',
@@ -208,7 +219,7 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
             end: { x: midX, y: childCenterY },
             bend: 0,
             color: style.color,
-            size: 's',
+            size: edgeSize,
             dash: style.dash,
             arrowheadStart: 'none',
             arrowheadEnd: 'none',
@@ -225,7 +236,7 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
           end: { x: childLeftX, y: childCenterY },
           bend: 0,
           color: style.color,
-          size: 's',
+          size: edgeSize,
           dash: style.dash,
           arrowheadStart: 'none',
           arrowheadEnd: 'arrow',
@@ -248,6 +259,10 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
       // Layer 3: 5 outcome branches (violet, semi)
       let color = 'grey';
       let fill = 'none';
+      let dash: 'solid' | 'dashed' = 'solid';
+
+      // Check if node is on highlighted path
+      const isOnHighlightedPath = highlightedPath.has(layoutNode.id);
 
       if (layoutNode.id === 'start') {
         // Layer 1: Root node
@@ -267,6 +282,12 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
         fill = 'semi';
       }
 
+      // Apply highlighting border if node is on highlighted path
+      if (isOnHighlightedPath) {
+        dash = 'dashed';
+        color = 'orange'; // Amber color for highlighting
+      }
+
       // Get node text from TREE_DATA
       const nodeText = data[layoutNode.id]?.question || layoutNode.id;
 
@@ -276,7 +297,7 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
       // Phase 3: Check if node is expanded
       const isExpanded = expansionState.expandedNodes.has(layoutNode.id);
 
-      // Create the node shape
+      // Create the node shape with highlighting dash style
       const nodeId = createNode(
         layoutNode.id,
         nodeText,
@@ -285,7 +306,8 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
         color,
         fill,
         isExpandableNode,
-        isExpanded
+        isExpanded,
+        dash
       );
 
       // STOP RECURSION at max depth - don't create children beyond this level
@@ -390,7 +412,8 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
     const shapeId = createShapeId(`node-${nodeId}`);
     const shape = editor.getShape(shapeId);
 
-    if (!shape || !shape.props.text) return;
+    if (!shape || !shape.props || typeof shape.props !== 'object') return;
+    if (!('text' in shape.props)) return;
 
     const text = shape.props.text as string;
     const icon = isExpanded ? '▼' : '▶';
@@ -403,6 +426,97 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
       type: 'geo',
       props: { text: newText }
     }]);
+  };
+
+  // Helper function: Re-apply highlighting to all visible shapes
+  const reapplyHighlighting = () => {
+    if (!editorRef.current || !editorRef.current.getCurrentPageShapes) return;
+
+    const editor = editorRef.current;
+    const allShapes = editor.getCurrentPageShapes();
+    const updates: any[] = [];
+
+    allShapes.forEach((shape: any) => {
+      // Update nodes
+      if (shape.type === 'geo' && shape.meta?.nodeId) {
+        const nodeId = shape.meta.nodeId;
+        const isHighlighted = highlightedPath.has(nodeId);
+
+        if (isHighlighted) {
+          updates.push({
+            id: shape.id,
+            type: 'geo',
+            props: {
+              dash: 'dashed',
+              color: 'orange'
+            }
+          });
+        } else {
+          // Reset to default styling (remove highlighting)
+          let defaultColor = 'grey';
+          if (nodeId === 'start') {
+            defaultColor = 'black';
+          } else if (nodeId === 'compare_groups') {
+            defaultColor = 'blue';
+          } else if (nodeId === 'describe_explore') {
+            defaultColor = 'green';
+          } else if (['cont_time', 'bin_time', 'count_check', 'tte_type', 'ord_type'].includes(nodeId)) {
+            defaultColor = 'violet';
+          }
+
+          updates.push({
+            id: shape.id,
+            type: 'geo',
+            props: {
+              dash: 'solid',
+              color: defaultColor
+            }
+          });
+        }
+      }
+
+      // Update edges
+      if (shape.type === 'arrow' && shape.id.includes('edge')) {
+        // Extract parent and child node IDs from edge ID
+        // Format: edge-node-{parentId}-node-{childId}-{segment}
+        const edgeId = shape.id as string;
+
+        // Parse parent and child node IDs from shape ID
+        // Shape ID format: edge-node-{parentId}-node-{childId}-{segment}
+        const cleanedId = edgeId.replace(/-h1$|-h2$|-v$/g, '');
+        const match = cleanedId.match(/edge-node-(.+?)-node-(.+)$/);
+        let isEdgeHighlighted = false;
+        if (match) {
+          const [, parentId, childId] = match;
+          isEdgeHighlighted = highlightedPath.has(parentId) && highlightedPath.has(childId);
+        }
+
+        if (isEdgeHighlighted) {
+          updates.push({
+            id: shape.id,
+            type: 'arrow',
+            props: {
+              color: 'orange',
+              size: 'm'
+            }
+          });
+        } else {
+          // Reset to default
+          updates.push({
+            id: shape.id,
+            type: 'arrow',
+            props: {
+              color: shape.props.color !== 'orange' ? shape.props.color : 'grey',
+              size: 's'
+            }
+          });
+        }
+      }
+    });
+
+    if (updates.length > 0) {
+      editor.updateShapes(updates);
+    }
   };
 
   // Helper function: Animate shapes in with staggered fade
@@ -506,15 +620,22 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
     };
   };
 
-  // Helper function: Create orthogonal edge shape
+  // Helper function: Create orthogonal edge shape with highlighting support
   const createOrthogonalEdgeShape = (
     startId: any,
     endId: any,
-    edgeRouting: { horizontal: { x1: number; x2: number; y: number }; vertical: { x: number; y1: number; y2: number } } | null
+    edgeRouting: { horizontal: { x1: number; x2: number; y: number }; vertical: { x: number; y1: number; y2: number } } | null,
+    parentNodeId: string,
+    childNodeId: string
   ) => {
     const shapes: any[] = [];
 
     if (edgeRouting) {
+      // Check if edge should be highlighted
+      const isHighlighted = highlightedPath.has(parentNodeId) && highlightedPath.has(childNodeId);
+      const edgeColor = isHighlighted ? 'orange' : 'grey';
+      const edgeSize = isHighlighted ? 'm' : 's';
+
       // Horizontal segment
       shapes.push({
         id: createShapeId(`edge-h-${endId}`),
@@ -523,8 +644,8 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
           start: { x: edgeRouting.horizontal.x1, y: edgeRouting.horizontal.y },
           end: { x: edgeRouting.horizontal.x2, y: edgeRouting.horizontal.y },
           bend: 0,
-          color: 'grey',
-          size: 's',
+          color: edgeColor,
+          size: edgeSize,
           arrowheadStart: 'none',
           arrowheadEnd: 'none'
         }
@@ -538,8 +659,8 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
           start: { x: edgeRouting.vertical.x, y: edgeRouting.vertical.y1 },
           end: { x: edgeRouting.vertical.x, y: edgeRouting.vertical.y2 },
           bend: 0,
-          color: 'grey',
-          size: 's',
+          color: edgeColor,
+          size: edgeSize,
           arrowheadStart: 'none',
           arrowheadEnd: 'arrow'
         }
@@ -584,18 +705,44 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
 
         childShapes.push(childShape);
 
-        // Create edge
-        const edgeShapes = createOrthogonalEdgeShape(
-          createShapeId(`node-${clickedNodeId}`),
-          childLayout.id,
-          childLayout.incomingEdge
-        );
+        // Calculate edge routing manually for incremental creation
+        const parentShape = editor.getShape(createShapeId(`node-${clickedNodeId}`));
+        if (parentShape && 'x' in parentShape && 'y' in parentShape) {
+          const parentX = (parentShape as any).x;
+          const parentY = (parentShape as any).y;
+          const parentProps = (parentShape as any).props;
 
-        childShapes.push(...edgeShapes);
+          const parentRightX = parentX + (parentProps?.w || DEFAULT_LAYOUT.nodeWidth);
+          const parentCenterY = parentY + (parentProps?.h || DEFAULT_LAYOUT.nodeHeight) / 2;
+          const childLeftX = childLayout.x;
+          const childCenterY = childLayout.y + DEFAULT_LAYOUT.nodeHeight / 2;
+
+          const midGap = DEFAULT_LAYOUT.levelGap * 0.4;
+          const midX = parentRightX + midGap;
+
+          const edgeRouting = {
+            horizontal: { x1: parentRightX, x2: midX, y: parentCenterY },
+            vertical: { x: midX, y1: parentCenterY, y2: childCenterY }
+          };
+
+          // Create edge with highlighting support
+          const edgeShapes = createOrthogonalEdgeShape(
+            createShapeId(`node-${clickedNodeId}`),
+            childLayout.id,
+            edgeRouting,
+            clickedNodeId,
+            opt.nextNodeId
+          );
+
+          childShapes.push(...edgeShapes);
+        }
       });
 
       // Create all shapes at once
       editor.createShapes(childShapes);
+
+      // Re-apply highlighting after creating new shapes
+      setTimeout(() => reapplyHighlighting(), 50);
 
       // Animate new shapes
       const shapeIds = childShapes
