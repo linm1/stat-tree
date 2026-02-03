@@ -4,7 +4,7 @@
  * Tests path calculation and highlighting behavior
  */
 
-import { getAncestors, calculatePathToNode } from './pathHighlighting';
+import { getAncestors, calculatePathToNode, getHighlightedEdges, isEdgeHighlighted } from './pathHighlighting';
 import { TREE_DATA } from '../data';
 
 describe('Path Highlighting - getAncestors', () => {
@@ -108,5 +108,123 @@ describe('Path Highlighting - Edge Cases', () => {
   it('handles null/undefined tree data', () => {
     const ancestors = getAncestors('start', {} as any);
     expect(ancestors).toEqual([]);
+  });
+});
+
+describe('Path Highlighting - getHighlightedEdges', () => {
+  it('returns edges connecting nodes in a multi-node path', () => {
+    const path = ['start', 'compare_groups', 'cont_time'];
+    const edges = getHighlightedEdges(path);
+
+    expect(edges.size).toBe(2);
+    expect(edges.has('edge-start-compare_groups')).toBe(true);
+    expect(edges.has('edge-compare_groups-cont_time')).toBe(true);
+  });
+
+  it('returns empty set for single node path (no edges)', () => {
+    const path = ['start'];
+    const edges = getHighlightedEdges(path);
+
+    expect(edges.size).toBe(0);
+  });
+
+  it('returns empty set for empty path', () => {
+    const path: string[] = [];
+    const edges = getHighlightedEdges(path);
+
+    expect(edges.size).toBe(0);
+  });
+
+  it('handles deep path with multiple edges', () => {
+    const path = ['start', 'compare_groups', 'cont_time', 'cont_single_groups', 'cont_single_2g'];
+    const edges = getHighlightedEdges(path);
+
+    expect(edges.size).toBe(4);
+    expect(edges.has('edge-start-compare_groups')).toBe(true);
+    expect(edges.has('edge-compare_groups-cont_time')).toBe(true);
+    expect(edges.has('edge-cont_time-cont_single_groups')).toBe(true);
+    expect(edges.has('edge-cont_single_groups-cont_single_2g')).toBe(true);
+  });
+
+  it('returns edges for two-node path', () => {
+    const path = ['start', 'describe_explore'];
+    const edges = getHighlightedEdges(path);
+
+    expect(edges.size).toBe(1);
+    expect(edges.has('edge-start-describe_explore')).toBe(true);
+  });
+
+  it('handles path with special characters in node IDs', () => {
+    const path = ['node_1', 'node-2', 'node.3'];
+    const edges = getHighlightedEdges(path);
+
+    expect(edges.size).toBe(2);
+    expect(edges.has('edge-node_1-node-2')).toBe(true);
+    expect(edges.has('edge-node-2-node.3')).toBe(true);
+  });
+});
+
+describe('Path Highlighting - isEdgeHighlighted', () => {
+  it('returns true when both source and target nodes are in path', () => {
+    const highlightedPath = new Set(['start', 'compare_groups', 'cont_time']);
+    const edgeId = 'edge-start-compare_groups';
+
+    expect(isEdgeHighlighted(edgeId, highlightedPath)).toBe(true);
+  });
+
+  it('returns false when only source node is in path', () => {
+    const highlightedPath = new Set(['start', 'compare_groups']);
+    const edgeId = 'edge-start-cont_time';
+
+    expect(isEdgeHighlighted(edgeId, highlightedPath)).toBe(false);
+  });
+
+  it('returns false when only target node is in path', () => {
+    const highlightedPath = new Set(['start', 'compare_groups']);
+    const edgeId = 'edge-cont_time-compare_groups';
+
+    expect(isEdgeHighlighted(edgeId, highlightedPath)).toBe(false);
+  });
+
+  it('returns false when neither node is in path', () => {
+    const highlightedPath = new Set(['start', 'compare_groups']);
+    const edgeId = 'edge-cont_time-cont_single_groups';
+
+    expect(isEdgeHighlighted(edgeId, highlightedPath)).toBe(false);
+  });
+
+  it('returns false for empty path', () => {
+    const highlightedPath = new Set<string>([]);
+    const edgeId = 'edge-start-compare_groups';
+
+    expect(isEdgeHighlighted(edgeId, highlightedPath)).toBe(false);
+  });
+
+  it('handles edge with special characters in node IDs', () => {
+    const highlightedPath = new Set(['node_1', 'node-2', 'node.3']);
+    const edgeId = 'edge-node_1-node-2';
+
+    expect(isEdgeHighlighted(edgeId, highlightedPath)).toBe(true);
+  });
+
+  it('returns false for malformed edge ID without proper format', () => {
+    const highlightedPath = new Set(['start', 'compare_groups']);
+    const edgeId = 'not-an-edge-id';
+
+    expect(isEdgeHighlighted(edgeId, highlightedPath)).toBe(false);
+  });
+
+  it('returns false for edge ID with missing parts', () => {
+    const highlightedPath = new Set(['start', 'compare_groups']);
+    const edgeId = 'edge-start';
+
+    expect(isEdgeHighlighted(edgeId, highlightedPath)).toBe(false);
+  });
+
+  it('returns true for middle edge in long path', () => {
+    const highlightedPath = new Set(['start', 'compare_groups', 'cont_time', 'cont_single_groups']);
+    const edgeId = 'edge-compare_groups-cont_time';
+
+    expect(isEdgeHighlighted(edgeId, highlightedPath)).toBe(true);
   });
 });

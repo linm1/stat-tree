@@ -2,7 +2,9 @@ import { describe, it, expect } from '@jest/globals';
 import {
   calculateArrowBend,
   getArrowStyle,
+  getArrowStyleWithHighlight,
   DEFAULT_LAYOUT,
+  HIGHLIGHT_STYLE,
 } from './treeLayout';
 
 /**
@@ -125,12 +127,83 @@ describe('Phase 4: Edge Routing Tests', () => {
     });
 
     it('levelGap should be large enough for routing', () => {
-      // Large horizontal gap (900px) allows room for edge routing
-      expect(DEFAULT_LAYOUT.levelGap).toBeGreaterThanOrEqual(900);
+      // Horizontal gap (450px) allows room for edge routing
+      expect(DEFAULT_LAYOUT.levelGap).toBeGreaterThanOrEqual(400);
     });
 
     it('nodeWidth should accommodate text content', () => {
       expect(DEFAULT_LAYOUT.nodeWidth).toBeGreaterThanOrEqual(200);
+    });
+  });
+
+  describe('Highlight Style Constants', () => {
+    it('HIGHLIGHT_STYLE.color should be an amber/orange hex color', () => {
+      expect(HIGHLIGHT_STYLE.color).toBe('#F59E0B');
+    });
+
+    it('HIGHLIGHT_STYLE.strokeWidth should be 4 (thicker than default 2)', () => {
+      expect(HIGHLIGHT_STYLE.strokeWidth).toBe(4);
+    });
+
+    it('HIGHLIGHT_STYLE.dash should be solid', () => {
+      expect(HIGHLIGHT_STYLE.dash).toBe('solid');
+    });
+  });
+
+  describe('getArrowStyleWithHighlight', () => {
+    it('returns normal level-1 style when not highlighted', () => {
+      const style = getArrowStyleWithHighlight(1, false);
+
+      expect(style.color).toBe('black');
+      expect(style.dash).toBe('solid');
+      expect(style.arrowheadEnd).toBe('arrow');
+      expect(style.strokeWidth).toBe(2); // Default stroke width
+    });
+
+    it('returns highlight style with amber color when highlighted', () => {
+      const style = getArrowStyleWithHighlight(1, true);
+
+      expect(style.color).toBe('#F59E0B'); // Amber highlight color
+      expect(style.dash).toBe('solid');
+      expect(style.strokeWidth).toBe(4); // Thicker stroke for highlight
+    });
+
+    it('overrides level-3 violet with amber when highlighted', () => {
+      const style = getArrowStyleWithHighlight(3, true);
+
+      expect(style.color).toBe('#F59E0B'); // Amber, not violet
+      expect(style.dash).toBe('solid');
+      expect(style.strokeWidth).toBe(4);
+    });
+
+    it('highlight style always uses solid dash, never dashed', () => {
+      // Test level 4 which normally has dashed
+      const style4 = getArrowStyleWithHighlight(4, true);
+      expect(style4.dash).toBe('solid');
+
+      // Test level 5+ which normally has dashed
+      const style5 = getArrowStyleWithHighlight(5, true);
+      expect(style5.dash).toBe('solid');
+    });
+
+    it('preserves arrowheadEnd from original style when highlighted', () => {
+      const style1 = getArrowStyleWithHighlight(1, true);
+      expect(style1.arrowheadEnd).toBe('arrow');
+
+      const style4 = getArrowStyleWithHighlight(4, true);
+      expect(style4.arrowheadEnd).toBe('triangle');
+
+      const style5 = getArrowStyleWithHighlight(5, true);
+      expect(style5.arrowheadEnd).toBe('dot');
+    });
+
+    it('returns normal style with correct strokeWidth for non-highlighted edges', () => {
+      const style1 = getArrowStyleWithHighlight(1, false);
+      expect(style1.strokeWidth).toBe(2);
+
+      const style3 = getArrowStyleWithHighlight(3, false);
+      expect(style3.strokeWidth).toBe(2);
+      expect(style3.color).toBe('violet'); // Normal violet, not amber
     });
   });
 
@@ -172,13 +245,13 @@ describe('Phase 4: Edge Routing Tests', () => {
     it('should calculate midpoint X for horizontal-vertical-horizontal routing', () => {
       // Test values - updated for current nodeWidth
       const parentRightX = 350; // 100 + 250
-      const childLeftX = 1250; // 350 + 900
-      const levelGap = DEFAULT_LAYOUT.levelGap; // 900
+      const childLeftX = 800; // 350 + 450
+      const levelGap = DEFAULT_LAYOUT.levelGap; // 450
 
       // Expected: midpoint should be 40% of the gap from parent
       const expectedMidX = parentRightX + (levelGap * 0.4);
 
-      expect(expectedMidX).toBe(710); // 350 + 360
+      expect(expectedMidX).toBe(530); // 350 + 180 (450 * 0.4)
     });
 
     it('should route edges in H-V-H pattern (3 segments)', () => {

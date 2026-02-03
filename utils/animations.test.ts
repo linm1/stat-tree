@@ -1,566 +1,487 @@
 /**
- * Tests for viewport management and animation functions
- * Phase 5 of progressive disclosure implementation
+ * TDD Tests for calculateBoundsWithChildren
  *
- * These tests verify:
- * - Viewport focus calculations
- * - Animation timing and sequencing
- * - Bounds calculations for shapes
- * - Zoom/pan functionality
+ * Testing smart zoom bounds calculation that includes a node AND its visible children.
+ * This enables users to see their next navigation options when zooming.
+ *
+ * ALL TESTS SHOULD FAIL INITIALLY (RED phase of TDD)
  */
 
-import { describe, test, expect, jest, beforeEach } from '@jest/globals';
-import type { Editor, TLShapeId } from 'tldraw';
+import { calculateBoundsWithChildren } from './animations';
+import { TreeData } from '../types';
+import { Editor, createShapeId } from 'tldraw';
 
-// Mock tldraw Editor API
-const createMockEditor = (shapes: Map<TLShapeId, any> = new Map()): Partial<Editor> => {
-  return {
-    getShape: jest.fn((id: TLShapeId) => shapes.get(id)),
-    getShapePageBounds: jest.fn((shape: any) => {
-      if (!shape) return null;
-      return {
-        x: shape.x,
-        y: shape.y,
-        w: shape.props.w,
-        h: shape.props.h,
-        minX: shape.x,
-        minY: shape.y,
-        maxX: shape.x + shape.props.w,
-        maxY: shape.y + shape.props.h,
-        width: shape.props.w,
-        height: shape.props.h,
-        center: {
-          x: shape.x + shape.props.w / 2,
-          y: shape.y + shape.props.h / 2
-        }
-      };
-    }),
-    zoomToBounds: jest.fn(),
-    createShapes: jest.fn(),
-    updateShapes: jest.fn(),
-  };
-};
-
-// Mock tree data
-const mockTreeData = {
-  'start': {
-    id: 'start',
-    question: 'Root',
+// Mock data for testing
+const mockTreeData: TreeData = {
+  'root': {
+    id: 'root',
+    question: 'Root node',
     options: [
-      { label: 'Child 1', nextNodeId: 'child1' },
-      { label: 'Child 2', nextNodeId: 'child2' }
+      { label: 'Option 1', nextNodeId: 'child1' },
+      { label: 'Option 2', nextNodeId: 'child2' },
+      { label: 'Option 3', nextNodeId: 'child3' }
     ]
   },
   'child1': {
     id: 'child1',
     question: 'Child 1',
-    options: [
-      { label: 'Grandchild 1', nextNodeId: 'grandchild1' },
-      { label: 'Grandchild 2', nextNodeId: 'grandchild2' }
-    ]
+    options: []
   },
   'child2': {
     id: 'child2',
     question: 'Child 2',
     options: []
   },
-  'grandchild1': {
-    id: 'grandchild1',
-    question: 'Grandchild 1',
+  'child3': {
+    id: 'child3',
+    question: 'Child 3',
     options: []
   },
-  'grandchild2': {
-    id: 'grandchild2',
-    question: 'Grandchild 2',
+  'no-children': {
+    id: 'no-children',
+    question: 'Leaf node with no children',
     options: []
-  }
+  },
+  'many-children': {
+    id: 'many-children',
+    question: 'Node with many children',
+    options: [
+      { label: 'Child 1', nextNodeId: 'mc-child1' },
+      { label: 'Child 2', nextNodeId: 'mc-child2' },
+      { label: 'Child 3', nextNodeId: 'mc-child3' },
+      { label: 'Child 4', nextNodeId: 'mc-child4' },
+      { label: 'Child 5', nextNodeId: 'mc-child5' }
+    ]
+  },
+  'mc-child1': { id: 'mc-child1', question: 'MC Child 1', options: [] },
+  'mc-child2': { id: 'mc-child2', question: 'MC Child 2', options: [] },
+  'mc-child3': { id: 'mc-child3', question: 'MC Child 3', options: [] },
+  'mc-child4': { id: 'mc-child4', question: 'MC Child 4', options: [] },
+  'mc-child5': { id: 'mc-child5', question: 'MC Child 5', options: [] }
 };
 
-describe('Viewport Management (Phase 5)', () => {
-  describe('focusOnExpandedNode', () => {
-    test('calculates correct bounds for parent and children', () => {
-      // Create mock shapes
-      const shapes = new Map();
+/**
+ * Create mock editor with predictable bounds for testing
+ */
+const createMockEditor = (shapeBoundsMap: Map<string, any>): Editor => {
+  return {
+    getShape: jest.fn((id: string) => {
+      // Return shape if it exists in bounds map
+      return shapeBoundsMap.has(id) ? { id } : undefined;
+    }),
+    getShapePageBounds: jest.fn((shape: any) => {
+      // Return bounds from map
+      return shapeBoundsMap.get(shape.id);
+    })
+  } as unknown as Editor;
+};
 
-      const parentShape = {
-        id: 'node-start' as TLShapeId,
-        x: 100,
-        y: 100,
-        props: { w: 200, h: 80 }
-      };
+describe('calculateBoundsWithChildren (TDD - RED Phase)', () => {
 
-      const child1Shape = {
-        id: 'node-child1' as TLShapeId,
-        x: 400,
-        y: 50,
-        props: { w: 200, h: 80 }
-      };
+  describe('Edge Case: Null/Invalid Inputs', () => {
 
-      const child2Shape = {
-        id: 'node-child2' as TLShapeId,
-        x: 400,
-        y: 150,
-        props: { w: 200, h: 80 }
-      };
+    test('returns null when editor is null', () => {
+      const result = calculateBoundsWithChildren(
+        'root',
+        null,
+        mockTreeData
+      );
 
-      shapes.set('node-start' as TLShapeId, parentShape);
-      shapes.set('node-child1' as TLShapeId, child1Shape);
-      shapes.set('node-child2' as TLShapeId, child2Shape);
-
-      const mockEditor = createMockEditor(shapes);
-
-      // Calculate expected bounds
-      const expectedBounds = {
-        minX: 100,
-        minY: 50,
-        maxX: 600, // child x + width
-        maxY: 230, // child y + height
-        width: 500,
-        height: 180
-      };
-
-      // With padding of 100
-      const expectedPaddedBounds = {
-        x: expectedBounds.minX - 100,
-        y: expectedBounds.minY - 100,
-        w: expectedBounds.width + 200,
-        h: expectedBounds.height + 200
-      };
-
-      expect(expectedPaddedBounds).toEqual({
-        x: 0,
-        y: -50,
-        w: 700,
-        h: 380
-      });
-    });
-
-    test('returns early if editor is null', () => {
-      const result = null; // focusOnExpandedNode should return early
       expect(result).toBeNull();
     });
 
-    test('returns early if parent shape not found', () => {
-      const mockEditor = createMockEditor();
-      // No shapes in editor - getShape returns undefined
-      expect(mockEditor.getShape).toBeDefined();
+    test('returns null when nodeId does not exist as a shape', () => {
+      const boundsMap = new Map();
+      const mockEditor = createMockEditor(boundsMap);
+
+      const result = calculateBoundsWithChildren(
+        'non-existent-node',
+        mockEditor,
+        mockTreeData
+      );
+
+      expect(result).toBeNull();
     });
 
-    test('returns early if node has no children', () => {
-      const shapes = new Map();
-      const leafShape = {
-        id: 'node-child2' as TLShapeId,
+    test('returns null when node exists in data but not as shape', () => {
+      const boundsMap = new Map();
+      const mockEditor = createMockEditor(boundsMap);
+
+      const result = calculateBoundsWithChildren(
+        'root',
+        mockEditor,
+        mockTreeData
+      );
+
+      expect(result).toBeNull();
+    });
+
+    test('handles node that does not exist in tree data gracefully', () => {
+      const boundsMap = new Map([
+        ['node-phantom', {
+          minX: 0,
+          minY: 0,
+          maxX: 100,
+          maxY: 100
+        }]
+      ]);
+      const mockEditor = createMockEditor(boundsMap);
+
+      // 'phantom' exists as shape but not in tree data
+      const result = calculateBoundsWithChildren(
+        'phantom',
+        mockEditor,
+        mockTreeData
+      );
+
+      // Should not crash, returns bounds of just the shape
+      expect(result).not.toBeNull();
+    });
+
+  });
+
+  describe('Edge Case: Node With No Children', () => {
+
+    test('returns bounds of just the node when node has no children', () => {
+      // Setup: Node at (100, 100) with size 200x100
+      const boundsMap = new Map([
+        ['node-no-children', {
+          minX: 100,
+          minY: 100,
+          maxX: 300,
+          maxY: 200
+        }]
+      ]);
+      const mockEditor = createMockEditor(boundsMap);
+
+      const result = calculateBoundsWithChildren(
+        'no-children',
+        mockEditor,
+        mockTreeData,
+        100 // padding
+      );
+
+      expect(result).not.toBeNull();
+      expect(result).toEqual({
+        x: 0,    // 100 - 100 (padding)
+        y: 0,    // 100 - 100 (padding)
+        w: 400,  // 200 + 200 (padding on both sides)
+        h: 300   // 100 + 200 (padding on both sides)
+      });
+    });
+
+  });
+
+  describe('Core Functionality: Node With Children', () => {
+
+    test('returns expanded bounds when node has children', () => {
+      // Setup: Parent at (100, 100), children spread out horizontally
+      const boundsMap = new Map([
+        // Parent node: 200x100 at (100, 100)
+        ['node-root', {
+          minX: 100,
+          minY: 100,
+          maxX: 300,
+          maxY: 200
+        }],
+        // Child 1: 150x80 at (0, 300)
+        ['node-child1', {
+          minX: 0,
+          minY: 300,
+          maxX: 150,
+          maxY: 380
+        }],
+        // Child 2: 150x80 at (175, 300)
+        ['node-child2', {
+          minX: 175,
+          minY: 300,
+          maxX: 325,
+          maxY: 380
+        }],
+        // Child 3: 150x80 at (350, 300)
+        ['node-child3', {
+          minX: 350,
+          minY: 300,
+          maxX: 500,
+          maxY: 380
+        }]
+      ]);
+      const mockEditor = createMockEditor(boundsMap);
+
+      const result = calculateBoundsWithChildren(
+        'root',
+        mockEditor,
+        mockTreeData,
+        100 // padding
+      );
+
+      // Expected bounds should encompass all shapes:
+      // minX: 0, minY: 100, maxX: 500, maxY: 380
+      // With 100px padding on all sides
+      expect(result).not.toBeNull();
+      expect(result).toEqual({
+        x: -100,   // 0 - 100
+        y: 0,      // 100 - 100
+        w: 700,    // (500 - 0) + 200
+        h: 480     // (380 - 100) + 200
+      });
+    });
+
+    test('bounds are wider/taller than just parent node', () => {
+      const boundsMap = new Map([
+        ['node-root', {
+          minX: 100,
+          minY: 100,
+          maxX: 300,
+          maxY: 200
+        }],
+        ['node-child1', {
+          minX: 0,
+          minY: 300,
+          maxX: 150,
+          maxY: 380
+        }],
+        ['node-child2', {
+          minX: 350,
+          minY: 300,
+          maxX: 500,
+          maxY: 380
+        }]
+      ]);
+      const mockEditor = createMockEditor(boundsMap);
+
+      const result = calculateBoundsWithChildren(
+        'root',
+        mockEditor,
+        mockTreeData,
+        0 // no padding to simplify comparison
+      );
+
+      // Calculate parent-only bounds
+      const parentWidth = 300 - 100;  // 200
+      const parentHeight = 200 - 100; // 100
+
+      // Result should be larger than parent-only
+      expect(result).not.toBeNull();
+      expect(result!.w).toBeGreaterThan(parentWidth);
+      expect(result!.h).toBeGreaterThan(parentHeight);
+    });
+
+  });
+
+  describe('Padding Behavior', () => {
+
+    test('default padding is 100px on all sides', () => {
+      const boundsMap = new Map([
+        ['node-no-children', {
+          minX: 0,
+          minY: 0,
+          maxX: 200,
+          maxY: 100
+        }]
+      ]);
+      const mockEditor = createMockEditor(boundsMap);
+
+      // Call without padding parameter
+      const result = calculateBoundsWithChildren(
+        'no-children',
+        mockEditor,
+        mockTreeData
+      );
+
+      expect(result).not.toBeNull();
+      expect(result).toEqual({
+        x: -100,  // 0 - 100 (default padding)
+        y: -100,  // 0 - 100 (default padding)
+        w: 400,   // 200 + 200 (padding on both sides)
+        h: 300    // 100 + 200 (padding on both sides)
+      });
+    });
+
+    test('custom padding is applied correctly', () => {
+      const boundsMap = new Map([
+        ['node-no-children', {
+          minX: 0,
+          minY: 0,
+          maxX: 200,
+          maxY: 100
+        }]
+      ]);
+      const mockEditor = createMockEditor(boundsMap);
+
+      const result = calculateBoundsWithChildren(
+        'no-children',
+        mockEditor,
+        mockTreeData,
+        50 // custom padding
+      );
+
+      expect(result).not.toBeNull();
+      expect(result).toEqual({
+        x: -50,   // 0 - 50
+        y: -50,   // 0 - 50
+        w: 300,   // 200 + 100
+        h: 200    // 100 + 100
+      });
+    });
+
+    test('zero padding works correctly', () => {
+      const boundsMap = new Map([
+        ['node-no-children', {
+          minX: 100,
+          minY: 100,
+          maxX: 300,
+          maxY: 200
+        }]
+      ]);
+      const mockEditor = createMockEditor(boundsMap);
+
+      const result = calculateBoundsWithChildren(
+        'no-children',
+        mockEditor,
+        mockTreeData,
+        0 // no padding
+      );
+
+      expect(result).not.toBeNull();
+      expect(result).toEqual({
         x: 100,
         y: 100,
-        props: { w: 200, h: 80 }
-      };
-      shapes.set('node-child2' as TLShapeId, leafShape);
-
-      const mockEditor = createMockEditor(shapes);
-
-      // Node has no options, should return early
-      expect(mockTreeData['child2'].options).toHaveLength(0);
-    });
-
-    test('handles child shapes that do not exist', () => {
-      const shapes = new Map();
-      const parentShape = {
-        id: 'node-start' as TLShapeId,
-        x: 100,
-        y: 100,
-        props: { w: 200, h: 80 }
-      };
-      shapes.set('node-start' as TLShapeId, parentShape);
-
-      const mockEditor = createMockEditor(shapes);
-
-      // Children shapes don't exist - should filter them out
-      const childShapes = ['child1', 'child2']
-        .map(id => mockEditor.getShape?.(`node-${id}` as TLShapeId))
-        .filter(s => s !== undefined);
-
-      expect(childShapes).toHaveLength(0);
-    });
-
-    test('calls zoomToBounds with correct animation parameters', () => {
-      const shapes = new Map();
-      const parentShape = {
-        id: 'node-start' as TLShapeId,
-        x: 100,
-        y: 100,
-        props: { w: 200, h: 80 }
-      };
-      const childShape = {
-        id: 'node-child1' as TLShapeId,
-        x: 400,
-        y: 100,
-        props: { w: 200, h: 80 }
-      };
-
-      shapes.set('node-start' as TLShapeId, parentShape);
-      shapes.set('node-child1' as TLShapeId, childShape);
-
-      const mockEditor = createMockEditor(shapes);
-
-      // Verify animation config has correct properties
-      const expectedAnimation = {
-        duration: 500,
-        easing: expect.any(Function)
-      };
-
-      expect(expectedAnimation.duration).toBe(500);
-
-      // Test easing function (ease-in-out quadratic)
-      const easing = (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-      expect(easing(0)).toBe(0);
-      expect(easing(0.5)).toBeCloseTo(0.5, 5);
-      expect(easing(1)).toBe(1);
-    });
-
-    test('adds 100px padding to all sides', () => {
-      const bounds = {
-        minX: 100,
-        minY: 100,
-        maxX: 300,
-        maxY: 200,
-        width: 200,
-        height: 100
-      };
-
-      const padding = 100;
-      const paddedBounds = {
-        x: bounds.minX - padding,
-        y: bounds.minY - padding,
-        w: bounds.width + (padding * 2),
-        h: bounds.height + (padding * 2)
-      };
-
-      expect(paddedBounds).toEqual({
-        x: 0,
-        y: 0,
-        w: 400,
-        h: 300
+        w: 200,
+        h: 100
       });
     });
 
-    test('expands bounds to include all child shapes', () => {
-      const parentBounds = { minX: 100, minY: 100, maxX: 300, maxY: 180 };
-      const child1Bounds = { minX: 400, minY: 50, maxX: 600, maxY: 130 };
-      const child2Bounds = { minX: 400, minY: 150, maxX: 600, maxY: 230 };
-
-      // Calculate combined bounds
-      const combinedBounds = {
-        minX: Math.min(parentBounds.minX, child1Bounds.minX, child2Bounds.minX),
-        minY: Math.min(parentBounds.minY, child1Bounds.minY, child2Bounds.minY),
-        maxX: Math.max(parentBounds.maxX, child1Bounds.maxX, child2Bounds.maxX),
-        maxY: Math.max(parentBounds.maxY, child1Bounds.maxY, child2Bounds.maxY)
-      };
-
-      expect(combinedBounds).toEqual({
-        minX: 100,
-        minY: 50,
-        maxX: 600,
-        maxY: 230
-      });
-    });
   });
 
-  describe('Animation Functions', () => {
-    describe('animateNewShapes', () => {
-      test('returns early if editor is null', () => {
-        const result = null; // Should return early
-        expect(result).toBeNull();
-      });
+  describe('Edge Case: Many Children', () => {
 
-      test('returns early if shape IDs array is empty', () => {
-        const mockEditor = createMockEditor();
-        const shapeIds: string[] = [];
+    test('handles node with many children - bounds expand to fit all', () => {
+      // Setup: Parent in center, 5 children spread in a wide arc
+      const boundsMap = new Map([
+        ['node-many-children', {
+          minX: 200,
+          minY: 0,
+          maxX: 400,
+          maxY: 100
+        }],
+        ['node-mc-child1', {
+          minX: 0,
+          minY: 200,
+          maxX: 150,
+          maxY: 280
+        }],
+        ['node-mc-child2', {
+          minX: 175,
+          minY: 200,
+          maxX: 325,
+          maxY: 280
+        }],
+        ['node-mc-child3', {
+          minX: 350,
+          minY: 200,
+          maxX: 500,
+          maxY: 280
+        }],
+        ['node-mc-child4', {
+          minX: 525,
+          minY: 200,
+          maxX: 675,
+          maxY: 280
+        }],
+        ['node-mc-child5', {
+          minX: 700,
+          minY: 200,
+          maxX: 850,
+          maxY: 280
+        }]
+      ]);
+      const mockEditor = createMockEditor(boundsMap);
 
-        expect(shapeIds.length).toBe(0);
-        // Should not call createShapes or updateShapes
-        expect(mockEditor.createShapes).toBeDefined();
-        expect(mockEditor.updateShapes).toBeDefined();
-      });
+      const result = calculateBoundsWithChildren(
+        'many-children',
+        mockEditor,
+        mockTreeData,
+        50 // padding
+      );
 
-      test('creates shapes with initial opacity of 0', () => {
-        const mockEditor = createMockEditor();
-
-        const shapeIds = ['shape1', 'shape2', 'shape3'];
-        const shapesData = shapeIds.map(id => ({
-          id: id as TLShapeId,
-          type: 'geo' as const,
-          x: 0,
-          y: 0,
-          opacity: 0,
-          props: {}
-        }));
-
-        shapesData.forEach(shape => {
-          expect(shape.opacity).toBe(0);
-        });
-      });
-
-      test('staggers fade-in with 50ms delay per shape', () => {
-        const delays = [0, 50, 100, 150, 200];
-        const shapeIds = ['s1', 's2', 's3', 's4', 's5'];
-
-        shapeIds.forEach((id, index) => {
-          const expectedDelay = index * 50;
-          expect(expectedDelay).toBe(delays[index]);
-        });
-      });
-
-      test('updates shapes to opacity 1 in sequence', () => {
-        const mockEditor = createMockEditor();
-
-        const updateCall = {
-          id: 'shape1' as TLShapeId,
-          type: 'geo' as const,
-          opacity: 1
-        };
-
-        expect(updateCall.opacity).toBe(1);
-        expect(updateCall.type).toBe('geo');
-      });
-
-      test('handles 10+ shapes with correct timing', () => {
-        const shapeCount = 15;
-        const shapeIds = Array.from({ length: shapeCount }, (_, i) => `shape${i}`);
-
-        const timings = shapeIds.map((_, index) => index * 50);
-
-        expect(timings[0]).toBe(0);
-        expect(timings[14]).toBe(700); // 14 * 50
-        expect(timings.length).toBe(15);
+      // Expected: minX: 0, minY: 0, maxX: 850, maxY: 280
+      expect(result).not.toBeNull();
+      expect(result).toEqual({
+        x: -50,    // 0 - 50
+        y: -50,    // 0 - 50
+        w: 950,    // (850 - 0) + 100
+        h: 380     // (280 - 0) + 100
       });
     });
 
-    describe('Easing Function', () => {
-      test('ease-in-out quadratic at key points', () => {
-        const easing = (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-
-        expect(easing(0)).toBe(0);
-        expect(easing(0.25)).toBeCloseTo(0.125, 5);
-        expect(easing(0.5)).toBeCloseTo(0.5, 5);
-        expect(easing(0.75)).toBeCloseTo(0.875, 5);
-        expect(easing(1)).toBe(1);
-      });
-
-      test('easing is continuous and smooth', () => {
-        const easing = (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-
-        // Test continuity at t=0.5
-        const leftLimit = 2 * 0.5 * 0.5; // 0.5
-        const rightLimit = -1 + (4 - 2 * 0.5) * 0.5; // 0.5
-
-        expect(leftLimit).toBe(rightLimit);
-      });
-    });
   });
 
-  describe('Viewport Bounds Calculations', () => {
-    test('calculates minimum bounding box for single shape', () => {
-      const shape = { x: 100, y: 200, w: 300, h: 150 };
+  describe('Edge Case: Missing Child Shapes', () => {
 
-      const bounds = {
-        minX: shape.x,
-        minY: shape.y,
-        maxX: shape.x + shape.w,
-        maxY: shape.y + shape.h,
-        width: shape.w,
-        height: shape.h
-      };
+    test('excludes children that do not exist as shapes', () => {
+      // Setup: Parent exists, but only 1 of 3 children exist as shapes
+      const boundsMap = new Map([
+        ['node-root', {
+          minX: 100,
+          minY: 100,
+          maxX: 300,
+          maxY: 200
+        }],
+        // Only child1 exists as a shape
+        ['node-child1', {
+          minX: 50,
+          minY: 300,
+          maxX: 200,
+          maxY: 380
+        }]
+        // child2 and child3 do NOT exist as shapes
+      ]);
+      const mockEditor = createMockEditor(boundsMap);
 
-      expect(bounds).toEqual({
-        minX: 100,
-        minY: 200,
-        maxX: 400,
-        maxY: 350,
-        width: 300,
-        height: 150
+      const result = calculateBoundsWithChildren(
+        'root',
+        mockEditor,
+        mockTreeData,
+        0 // no padding
+      );
+
+      // Expected: Include parent (100-300, 100-200) and child1 (50-200, 300-380)
+      expect(result).not.toBeNull();
+      expect(result).toEqual({
+        x: 50,     // min(100, 50) = 50
+        y: 100,    // min(100, 300) = 100
+        w: 250,    // (300 - 50)
+        h: 280     // (380 - 100)
       });
     });
 
-    test('calculates minimum bounding box for multiple shapes', () => {
-      const shapes = [
-        { x: 100, y: 100, w: 200, h: 80 },
-        { x: 400, y: 50, w: 200, h: 80 },
-        { x: 400, y: 200, w: 200, h: 80 }
-      ];
-
-      const bounds = shapes.reduce((acc, shape) => {
-        const shapeBounds = {
-          minX: shape.x,
-          minY: shape.y,
-          maxX: shape.x + shape.w,
-          maxY: shape.y + shape.h
-        };
-
-        return {
-          minX: Math.min(acc.minX, shapeBounds.minX),
-          minY: Math.min(acc.minY, shapeBounds.minY),
-          maxX: Math.max(acc.maxX, shapeBounds.maxX),
-          maxY: Math.max(acc.maxY, shapeBounds.maxY)
-        };
-      }, {
-        minX: Infinity,
-        minY: Infinity,
-        maxX: -Infinity,
-        maxY: -Infinity
-      });
-
-      expect(bounds).toEqual({
-        minX: 100,
-        minY: 50,
-        maxX: 600,
-        maxY: 280
-      });
-    });
-
-    test('handles shapes with negative coordinates', () => {
-      const shapes = [
-        { x: -100, y: -50, w: 200, h: 100 },
-        { x: 50, y: 50, w: 100, h: 100 }
-      ];
-
-      const bounds = {
-        minX: Math.min(...shapes.map(s => s.x)),
-        minY: Math.min(...shapes.map(s => s.y)),
-        maxX: Math.max(...shapes.map(s => s.x + s.w)),
-        maxY: Math.max(...shapes.map(s => s.y + s.h))
-      };
-
-      expect(bounds).toEqual({
-        minX: -100,
-        minY: -50,
-        maxX: 150,
-        maxY: 150
-      });
-    });
   });
 
-  describe('Edge Cases', () => {
-    test('handles undefined shape bounds gracefully', () => {
-      const mockEditor = createMockEditor();
+  describe('Integration: createShapeId Format', () => {
 
-      const shapeId = 'nonexistent' as TLShapeId;
-      const shape = mockEditor.getShape?.(shapeId);
+    test('uses correct shape ID format (node-{nodeId})', () => {
+      const boundsMap = new Map([
+        ['node-root', {
+          minX: 0,
+          minY: 0,
+          maxX: 100,
+          maxY: 100
+        }]
+      ]);
+      const mockEditor = createMockEditor(boundsMap);
 
-      expect(shape).toBeUndefined();
+      calculateBoundsWithChildren(
+        'root',
+        mockEditor,
+        mockTreeData,
+        0
+      );
+
+      // Verify getShape was called with correct ID format
+      expect(mockEditor.getShape).toHaveBeenCalledWith('node-root');
     });
 
-    test('handles empty children array', () => {
-      const node = mockTreeData['child2'];
-      expect(node.options).toHaveLength(0);
-
-      const childIds = node.options?.map(opt => `node-${opt.nextNodeId}`) || [];
-      expect(childIds).toHaveLength(0);
-    });
-
-    test('handles very large padding values', () => {
-      const bounds = { minX: 100, minY: 100, maxX: 200, maxY: 200, width: 100, height: 100 };
-      const largePadding = 1000;
-
-      const paddedBounds = {
-        x: bounds.minX - largePadding,
-        y: bounds.minY - largePadding,
-        w: bounds.width + (largePadding * 2),
-        h: bounds.height + (largePadding * 2)
-      };
-
-      expect(paddedBounds).toEqual({
-        x: -900,
-        y: -900,
-        w: 2100,
-        h: 2100
-      });
-    });
-
-    test('handles single child node', () => {
-      const shapes = new Map();
-      const parentShape = {
-        id: 'node-parent' as TLShapeId,
-        x: 100,
-        y: 100,
-        props: { w: 200, h: 80 }
-      };
-      const childShape = {
-        id: 'node-child' as TLShapeId,
-        x: 400,
-        y: 100,
-        props: { w: 200, h: 80 }
-      };
-
-      shapes.set('node-parent' as TLShapeId, parentShape);
-      shapes.set('node-child' as TLShapeId, childShape);
-
-      const mockEditor = createMockEditor(shapes);
-
-      const childShapes = [childShape];
-      expect(childShapes.length).toBe(1);
-    });
-
-    test('handles overlapping shapes', () => {
-      const shapes = [
-        { x: 100, y: 100, w: 200, h: 200 },
-        { x: 150, y: 150, w: 100, h: 100 } // Fully contained
-      ];
-
-      const bounds = {
-        minX: Math.min(...shapes.map(s => s.x)),
-        minY: Math.min(...shapes.map(s => s.y)),
-        maxX: Math.max(...shapes.map(s => s.x + s.w)),
-        maxY: Math.max(...shapes.map(s => s.y + s.h))
-      };
-
-      // Outer shape should define bounds
-      expect(bounds).toEqual({
-        minX: 100,
-        minY: 100,
-        maxX: 300,
-        maxY: 300
-      });
-    });
   });
 
-  describe('Integration with tldraw API', () => {
-    test('zoomToBounds accepts correct parameters', () => {
-      const mockEditor = createMockEditor();
-
-      const bounds = { x: 0, y: 0, w: 800, h: 600 };
-      const options = {
-        animation: {
-          duration: 500,
-          easing: (t: number) => t
-        }
-      };
-
-      expect(mockEditor.zoomToBounds).toBeDefined();
-      expect(options.animation.duration).toBe(500);
-      expect(options.animation.easing(0.5)).toBe(0.5);
-    });
-
-    test('createShapes accepts array of shape data', () => {
-      const mockEditor = createMockEditor();
-
-      const shapesData = [
-        { id: 's1' as TLShapeId, type: 'geo' as const, opacity: 0, props: {} },
-        { id: 's2' as TLShapeId, type: 'geo' as const, opacity: 0, props: {} }
-      ];
-
-      expect(mockEditor.createShapes).toBeDefined();
-      expect(shapesData.length).toBe(2);
-    });
-
-    test('updateShapes accepts array of partial shape data', () => {
-      const mockEditor = createMockEditor();
-
-      const updates = [
-        { id: 's1' as TLShapeId, type: 'geo' as const, opacity: 1 }
-      ];
-
-      expect(mockEditor.updateShapes).toBeDefined();
-      expect(updates[0].opacity).toBe(1);
-    });
-  });
 });

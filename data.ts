@@ -86,7 +86,7 @@ run;`,
   },
   cont_ttest: {
     id: 'cont_ttest',
-    question: "Simple comparison (2 groups, unpaired)",
+    question: "Simple comparison",
     result: {
       procedures: ['PROC TTEST'],
       briefing: "Used for comparing means of two independent groups (e.g., Drug vs Placebo in parallel groups).",
@@ -103,7 +103,7 @@ run;`
   },
   cont_paired: {
     id: 'cont_paired',
-    question: "Paired comparison (2 groups, paired)",
+    question: "Paired comparison",
     result: {
       procedures: ['PROC TTEST (paired)'],
       briefing: "Used for pre vs post treatment comparisons in the same subject.",
@@ -119,7 +119,7 @@ run;`
   },
   cont_single_3g: {
     id: 'cont_single_3g',
-    question: "One-way ANOVA (3+ groups)",
+    question: "One-way ANOVA",
     result: {
       procedures: ['PROC GLM'],
       briefing: "Standard Analysis of Variance for comparing means across multiple dose levels or categories.",
@@ -137,7 +137,7 @@ run;`
   },
   cont_ancova: {
     id: 'cont_ancova',
-    question: "ANCOVA (Adjustment for baseline)",
+    question: "ANCOVA",
     result: {
       procedures: ['PROC GLM'],
       briefing: "Standard approach for clinical trials to adjust the treatment effect for baseline imbalances.",
@@ -155,7 +155,7 @@ run;`
   },
   cont_nonnorm_2g: {
     id: 'cont_nonnorm_2g',
-    question: "Non-parametric (2 groups)",
+    question: "Non-parametric",
     result: {
       procedures: ['PROC NPAR1WAY'],
       briefing: "Used when normality assumptions are violated (e.g., skewed lab values).",
@@ -180,7 +180,7 @@ run;`
   },
   cont_repeated_glm: {
     id: 'cont_repeated_glm',
-    question: "Balanced Repeated Measures",
+    question: "Balanced, Repeated",
     result: {
       procedures: ['PROC GLM (REPEATED)'],
       briefing: "Classic approach for repeated measures, but requires no missing data across visits.",
@@ -198,7 +198,7 @@ run;`
   },
   cont_repeated_mixed: {
     id: 'cont_repeated_mixed',
-    question: "MMRM / Linear Mixed Models (Recommended)",
+    question: "Linear Mixed Models",
     result: {
       procedures: ['PROC MIXED'],
       briefing: "Handles missing data and flexible correlation structures (UN, AR(1)). The gold standard for longitudinal clinical data.",
@@ -243,7 +243,7 @@ run;`
   },
   bin_freq: {
     id: 'bin_freq',
-    question: "Contingency Table Analysis",
+    question: "Contingency Table",
     result: {
       procedures: ['PROC FREQ'],
       briefing: "For comparing proportions without covariate adjustment.",
@@ -299,7 +299,7 @@ run;`
   },
   bin_gee: {
     id: 'bin_gee',
-    question: "GEE (Generalized Estimating Equations)",
+    question: "GEE",
     result: {
       procedures: ['PROC GENMOD'],
       briefing: "Used for marginal effects, robust to misspecification of correlation structure.",
@@ -319,7 +319,7 @@ run;`
   },
   bin_glmm: {
     id: 'bin_glmm',
-    question: "GLMM (Generalized Linear Mixed Models)",
+    question: "GLMM",
     result: {
       procedures: ['PROC GLIMMIX'],
       briefing: "Subject-specific effects using random intercepts/slopes.",
@@ -491,7 +491,7 @@ run;`
   },
   ord_npar: {
     id: 'ord_npar',
-    question: "Wilcoxon Rank-Sum (Ordinal)",
+    question: "Wilcoxon Rank-Sum",
     result: {
       procedures: ['PROC NPAR1WAY'],
       briefing: "Simple non-parametric comparison for ordered scores like pain scales.",

@@ -17,8 +17,7 @@ import { DecisionNode, TreeData } from './types';
 import { ChatPanel } from './components/ChatPanel';
 import {
   calculateNodePositions,
-  calculateArrowBend,
-  getArrowStyle,
+  getArrowStyleWithHighlight,
   DEFAULT_LAYOUT,
   LayoutNode
 } from './utils/treeLayout';
@@ -31,7 +30,8 @@ import {
   isNodeVisible,
   hasChildren
 } from './utils/expansionState';
-import { determineClickAction } from './utils/clickBehavior';
+import { calculatePathToNode, getHighlightedEdges } from './utils/pathHighlighting';
+import { calculateBoundsWithChildren } from './utils/animations';
 
 // --- Tldraw Map Component ---
 
@@ -42,14 +42,21 @@ import { determineClickAction } from './utils/clickBehavior';
 // Level 4+: Deeper branches (time point, group count, etc.)
 //
 // Note: describe_explore is a result node (leaf) at Level 2
-const MAX_MAP_DEPTH = 4;
+const MAX_MAP_DEPTH = 6;
 
 interface TldrawMapViewProps {
   data: TreeData;
   onNodeClick: (id: string) => void;
+  selectedNodeId?: string; // External selection from Interactive Flow
+  onSelectionChange?: (nodeId: string) => void; // Notify parent of map selection
 }
 
-const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
+const TldrawMapView: React.FC<TldrawMapViewProps> = ({
+  data,
+  onNodeClick,
+  selectedNodeId,
+  onSelectionChange
+}) => {
   const [isMounted, setIsMounted] = useState(false);
   const editorRef = useRef<Editor | null>(null);
   const layoutRef = useRef<LayoutNode | null>(null);
@@ -59,6 +66,20 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
     createInitialExpansionState()
   );
   const [isAnimating, setIsAnimating] = useState(false);
+
+  // Path highlighting state
+  const [highlightedPath, setHighlightedPath] = useState<Set<string>>(new Set(['start']));
+  const [highlightedEdges, setHighlightedEdges] = useState<Set<string>>(new Set());
+
+  // Sync highlighted path when external selection changes (from Interactive Flow)
+  useEffect(() => {
+    if (selectedNodeId) {
+      // Calculate full path from root to selected node
+      const fullPath = calculatePathToNode(selectedNodeId, data);
+      setHighlightedPath(new Set(fullPath));
+      setHighlightedEdges(getHighlightedEdges(fullPath));
+    }
+  }, [selectedNodeId, data]);
 
   const handleMount = (editor: Editor) => {
     // Store editor reference
@@ -128,7 +149,9 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
       label: string | undefined,
       level: number,
       siblingIndex: number,
-      totalSiblings: number
+      totalSiblings: number,
+      parentNodeId: string,
+      childNodeId: string
     ): void => {
       const startNode = shapes.find(s => s.id === startId);
       const endNode = shapes.find(s => s.id === endId);
@@ -148,8 +171,11 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
       const midGap = DEFAULT_LAYOUT.levelGap * 0.4;
       const midX = parentRightX + midGap;
 
-      // Get arrow style based on level
-      const style = getArrowStyle(level);
+      // Check if this edge should be highlighted (both parent and child are on highlighted path)
+      const isHighlighted = highlightedPath.has(parentNodeId) && highlightedPath.has(childNodeId);
+
+      // Get arrow style based on level and highlight state
+      const style = getArrowStyleWithHighlight(level, isHighlighted);
 
       // Create unique base ID for this edge
       const baseId = `edge-${startId.id || startId}-${endId.id || endId}`;
@@ -288,7 +314,9 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
               label,
               child.level,
               index,
-              layoutNode.children.length
+              layoutNode.children.length,
+              layoutNode.id,
+              child.id
             );
           }
         });
@@ -398,11 +426,24 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
     });
   };
 
-  // Helper function: Zoom to node bounds
-  const focusOnNode = (nodeId: string) => {
+  // Helper function: Zoom to node bounds (smart zoom includes children)
+  const focusOnNode = (nodeId: string, includeChildren: boolean = true) => {
     if (!editorRef.current) return;
 
     const editor = editorRef.current;
+
+    // Use smart zoom that includes children bounds
+    if (includeChildren) {
+      const boundsWithChildren = calculateBoundsWithChildren(nodeId, editor, data);
+      if (boundsWithChildren) {
+        editor.zoomToBounds(boundsWithChildren, {
+          animation: { duration: 500 }
+        });
+        return;
+      }
+    }
+
+    // Fallback: zoom to just the node
     const shapeId = createShapeId(`node-${nodeId}`);
     const shape = editor.getShape(shapeId);
 
@@ -593,6 +634,16 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({ data, onNodeClick }) => {
 
     // Ignore clicks during animation
     if (isAnimating) return;
+
+    // Update highlighted path when any node is clicked
+    const fullPath = calculatePathToNode(nodeId, data);
+    setHighlightedPath(new Set(fullPath));
+    setHighlightedEdges(getHighlightedEdges(fullPath));
+
+    // Notify parent of selection change (for bidirectional sync)
+    if (onSelectionChange) {
+      onSelectionChange(nodeId);
+    }
 
     // Prevent collapsing root node (always expanded)
     if (nodeId === 'start' && expansionState.expandedNodes.has('start')) {
@@ -979,7 +1030,11 @@ const App: React.FC = () => {
               <p className="text-ink/60 font-mono font-bold text-xs uppercase">Visualized Logic Paths & Decision Nodes (Infinite Canvas)</p>
             </div>
             
-            <TldrawMapView data={TREE_DATA} onNodeClick={handleJumpToNode} />
+            <TldrawMapView
+              data={TREE_DATA}
+              onNodeClick={handleJumpToNode}
+              selectedNodeId={currentNodeId}
+            />
             
             <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-soft border-1 border-ink p-4 shadow-brutal font-mono">

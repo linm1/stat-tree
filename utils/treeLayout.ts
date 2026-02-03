@@ -295,6 +295,15 @@ const ARROW_STYLES = {
   },
 } as const;
 
+/**
+ * Style configuration for highlighted edges/nodes
+ */
+export const HIGHLIGHT_STYLE = {
+  color: '#F59E0B',      // Amber/orange hex color
+  strokeWidth: 4,        // Thicker than normal (4)
+  dash: 'solid' as const // 'solid' for highlighted
+};
+
 // Bend calculation constants
 const BEND_MULTIPLIER = 0.15;
 const MAX_BEND = 80;
@@ -398,4 +407,36 @@ export function getArrowStyle(level: number): {
 
   // Level 5+: grey, dashed, dot
   return ARROW_STYLES.LEVEL_5_PLUS;
+}
+
+/**
+ * Get the appropriate arrow style, considering highlight state
+ * @param level - The tree level (1-5+)
+ * @param isHighlighted - Whether this edge is on the highlighted path
+ * @returns Arrow style object with color, dash, arrowhead, strokeWidth
+ */
+export function getArrowStyleWithHighlight(
+  level: number,
+  isHighlighted: boolean
+): {
+  color: string;
+  dash: 'solid' | 'dashed';
+  arrowheadEnd: string;
+  strokeWidth: number;
+} {
+  const baseStyle = getArrowStyle(level);
+
+  if (isHighlighted) {
+    return {
+      ...baseStyle,
+      color: HIGHLIGHT_STYLE.color,
+      dash: HIGHLIGHT_STYLE.dash,
+      strokeWidth: HIGHLIGHT_STYLE.strokeWidth,
+    };
+  }
+
+  return {
+    ...baseStyle,
+    strokeWidth: 2, // Default stroke width
+  };
 }

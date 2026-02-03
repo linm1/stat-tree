@@ -221,3 +221,94 @@ export const addPaddingToBounds = (
     h: bounds.height + (padding * 2)
   };
 };
+
+/**
+ * Calculate bounds for a node including its children
+ * Returns bounds that encompass parent node and all visible child nodes
+ * This enables smart zoom that shows users their next navigation options
+ *
+ * @param nodeId - The parent node ID
+ * @param editor - tldraw Editor instance
+ * @param data - Tree data structure
+ * @param padding - Padding to add around bounds (default 100)
+ * @returns Bounds object { x, y, w, h } or null if node not found
+ */
+export const calculateBoundsWithChildren = (
+  nodeId: string,
+  editor: Editor | null,
+  data: TreeData,
+  padding: number = 100
+): { x: number; y: number; w: number; h: number } | null => {
+  // Early return if editor is null
+  if (!editor) return null;
+
+  // Get parent shape using node-{nodeId} format
+  const shapeId = createShapeId(`node-${nodeId}`);
+  const parentShape = editor.getShape(shapeId);
+
+  // Return null if shape doesn't exist
+  if (!parentShape) return null;
+
+  // Get parent bounds
+  const parentBounds = editor.getShapePageBounds(parentShape);
+  if (!parentBounds) return null;
+
+  // Get node data
+  const node = data[nodeId];
+
+  // If node doesn't exist in data or has no children, return parent bounds with padding
+  if (!node || !node.options || node.options.length === 0) {
+    return addPaddingToBounds(
+      {
+        minX: parentBounds.minX,
+        minY: parentBounds.minY,
+        width: parentBounds.maxX - parentBounds.minX,
+        height: parentBounds.maxY - parentBounds.minY
+      },
+      padding
+    );
+  }
+
+  // Get child shape IDs
+  const childIds = node.options.map(opt =>
+    createShapeId(`node-${opt.nextNodeId}`)
+  );
+
+  // Get child shapes (filter out undefined)
+  const childShapes = childIds
+    .map(id => editor.getShape(id))
+    .filter(s => s !== undefined);
+
+  // Get bounds for all child shapes
+  const childBounds = childShapes
+    .map(child => editor.getShapePageBounds(child))
+    .filter(bounds => bounds !== null && bounds !== undefined);
+
+  // Combine parent and child bounds using reduce (immutable)
+  const allBounds = [parentBounds, ...childBounds];
+  const combinedBounds = allBounds.reduce(
+    (acc, bounds) => ({
+      minX: Math.min(acc.minX, bounds.minX),
+      minY: Math.min(acc.minY, bounds.minY),
+      maxX: Math.max(acc.maxX, bounds.maxX),
+      maxY: Math.max(acc.maxY, bounds.maxY)
+    }),
+    {
+      minX: parentBounds.minX,
+      minY: parentBounds.minY,
+      maxX: parentBounds.maxX,
+      maxY: parentBounds.maxY
+    }
+  );
+
+  // Add padding and return
+  return addPaddingToBounds(
+    {
+      minX: combinedBounds.minX,
+      minY: combinedBounds.minY,
+      width: combinedBounds.maxX - combinedBounds.minX,
+      height: combinedBounds.maxY - combinedBounds.minY
+    },
+    padding
+  );
+};

@@ -50,10 +50,10 @@ describe('Phase 4: Edge Routing Integration Tests', () => {
 
     it('calculates midpoint X at 40% of levelGap from parent', () => {
       const parentRightX = 350;
-      const midGap = DEFAULT_LAYOUT.levelGap * 0.4; // 900 * 0.4 = 360
+      const midGap = DEFAULT_LAYOUT.levelGap * 0.4; // 450 * 0.4 = 180
       const midX = parentRightX + midGap;
 
-      expect(midX).toBe(710);
+      expect(midX).toBe(530); // 350 + 180
     });
   });
 
@@ -149,10 +149,10 @@ describe('Phase 4: Edge Routing Integration Tests', () => {
       const child3LeftX = 1250;
       const child3CenterY = 300 + DEFAULT_LAYOUT.nodeHeight / 2;  // 300 + 35 = 335
 
-      const midX = parentRightX + DEFAULT_LAYOUT.levelGap * 0.4;  // 350 + 360 = 710
+      const midX = parentRightX + DEFAULT_LAYOUT.levelGap * 0.4;  // 350 + 180 = 530
 
       // All children connect at same midX (vertical line at midX)
-      expect(midX).toBe(parentRightX + 360);
+      expect(midX).toBe(parentRightX + 180); // 450 * 0.4 = 180
 
       // Vertical segments have different lengths
       const vertical1 = Math.abs(child1CenterY - parentCenterY);
@@ -195,7 +195,7 @@ describe('Phase 4: Edge Routing Integration Tests', () => {
       // Midpoint X unchanged (vertical distance doesn't affect horizontal routing)
       const parentRightX = 350; // Current nodeWidth (250)
       const midX = parentRightX + DEFAULT_LAYOUT.levelGap * 0.4;
-      expect(midX).toBe(710); // 350 + 360
+      expect(midX).toBe(530); // 350 + 180 (450 * 0.4)
     });
 
     it('handles child above parent (negative vertical direction)', () => {
