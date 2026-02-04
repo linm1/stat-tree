@@ -1,6 +1,15 @@
 import * as React from 'react';
-import { useState, useEffect, useRef } from 'react';
-import { Tldraw, Editor, createShapeId, DefaultColorThemePalette } from 'tldraw';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import {
+  Tldraw,
+  Editor,
+  createShapeId,
+  DefaultColorThemePalette,
+  DefaultToolbar,
+  TLComponents,
+  SelectToolbarItem,
+  HandToolbarItem
+} from 'tldraw';
 import { TreeData, ExpansionState } from '../types';
 import {
   calculateNodePositions,
@@ -21,10 +30,14 @@ import { calculateBoundsWithChildren } from '../utils/animations';
 
 // Override 'orange' color with Orchid (#F2BED1) for highlight styling
 // Note: tldraw's fill:'solid' uses .semi property (counterintuitive naming)
-DefaultColorThemePalette.lightMode.orange.solid = '#F2BED1';
-DefaultColorThemePalette.lightMode.orange.semi = '#F2BED1';
-DefaultColorThemePalette.darkMode.orange.solid = '#F2BED1';
-DefaultColorThemePalette.darkMode.orange.semi = '#F2BED1';
+if (DefaultColorThemePalette?.lightMode?.orange) {
+  DefaultColorThemePalette.lightMode.orange.solid = '#F2BED1';
+  DefaultColorThemePalette.lightMode.orange.semi = '#F2BED1';
+}
+if (DefaultColorThemePalette?.darkMode?.orange) {
+  DefaultColorThemePalette.darkMode.orange.solid = '#F2BED1';
+  DefaultColorThemePalette.darkMode.orange.semi = '#F2BED1';
+}
 
 const MAX_MAP_DEPTH = 6;
 
@@ -53,7 +66,6 @@ export const TldrawMapView: React.FC<TldrawMapViewProps> = ({
   const editorRef = useRef<Editor | null>(null);
   const layoutRef = useRef<LayoutNode | null>(null);
   const handlerRegisteredRef = useRef<boolean>(false);
-  const [currentTool, setCurrentTool] = useState<string>('select');
   const isAnimatingRef = useRef(false);
   const [highlightedEdges, setHighlightedEdges] = useState<Set<string>>(new Set());
   const highlightedPathRef = useRef<Set<string>>(highlightedPath);
@@ -85,7 +97,7 @@ export const TldrawMapView: React.FC<TldrawMapViewProps> = ({
     const editor = editorRef.current;
     const allShapes = editor.getCurrentPageShapes();
     const updates: any[] = [];
-    const highlightedEdgeIds: string[] = [];
+    const highlightedEdgeIds: any[] = [];
 
     allShapes.forEach((shape: any) => {
       if (shape.type === 'geo' && shape.meta?.nodeId) {
@@ -371,7 +383,6 @@ export const TldrawMapView: React.FC<TldrawMapViewProps> = ({
   const handleMount = (editor: Editor) => {
     editorRef.current = editor;
     if (!handlerRegisteredRef.current) setIsMounted(true);
-    setCurrentTool(editor.getCurrentToolId());
 
     const shapes: any[] = [];
     const makeId = (id: string) => createShapeId(`node-${id}`);
@@ -508,10 +519,8 @@ export const TldrawMapView: React.FC<TldrawMapViewProps> = ({
     const editor = editorRef.current;
 
     const handleEvent = (e: any) => {
-      const toolId = editor.getCurrentToolId();
-      setCurrentTool(toolId);
-
       if (e.name !== 'pointer_up') return;
+      const toolId = editor.getCurrentToolId();
       if (toolId !== 'select') return;
 
       const selected = editor.getSelectedShapes();
@@ -532,38 +541,37 @@ export const TldrawMapView: React.FC<TldrawMapViewProps> = ({
     };
   }, [isMounted]);
 
-  const handleZoomToFit = () => editorRef.current?.zoomToFit({ animation: { duration: 300 } });
-  const handleZoomIn = () => editorRef.current?.zoomIn();
-  const handleZoomOut = () => editorRef.current?.zoomOut();
-  const handleSetTool = (tool: 'select' | 'hand') => {
-    if (editorRef.current) {
-      editorRef.current.setCurrentTool(tool);
-      setCurrentTool(tool);
-    }
-  };
+  const components: TLComponents = useMemo(() => ({
+    Toolbar: () => (
+      <DefaultToolbar>
+        <SelectToolbarItem />
+        <HandToolbarItem />
+      </DefaultToolbar>
+    ),
+    NavigationPanel: null,
+    MainMenu: null,
+    ContextMenu: null,
+    ActionsMenu: null,
+    QuickActions: null,
+    StylePanel: null,
+    PageMenu: null,
+    Minimap: null,
+    DebugPanel: null,
+    DebugMenu: null,
+    SharePanel: null,
+    TopPanel: null,
+    MenuPanel: null,
+    HelpMenu: null,
+    KeyboardShortcutsDialog: null,
+  }), []);
 
   return (
     <div className="w-full min-h-[600px] h-[calc(100vh-300px)] max-h-[1200px] border-2 border-ink shadow-brutal bg-white relative">
-      <Tldraw onMount={handleMount} hideUi={true} persistenceKey="sas-decision-tree-map" />
-
-      <div className="absolute top-4 right-4 bg-white border-1 border-ink shadow-brutal p-1 z-[1000] flex flex-col gap-1">
-        <button onClick={handleZoomToFit} className="px-3 py-2 hover:bg-accent transition-colors border-1 border-transparent hover:border-ink" title="Fit Window">
-          <i className="fa-solid fa-expand text-ink"></i>
-        </button>
-        <button onClick={handleZoomIn} className="px-3 py-2 hover:bg-accent transition-colors border-1 border-transparent hover:border-ink" title="Zoom In">
-          <i className="fa-solid fa-magnifying-glass-plus text-ink"></i>
-        </button>
-        <button onClick={handleZoomOut} className="px-3 py-2 hover:bg-accent transition-colors border-1 border-transparent hover:border-ink" title="Zoom Out">
-          <i className="fa-solid fa-magnifying-glass-minus text-ink"></i>
-        </button>
-        <div className="h-px bg-ink/20 w-full"></div>
-        <button onClick={() => handleSetTool('select')} className={`px-3 py-2 transition-colors border-1 ${currentTool === 'select' ? 'bg-primary border-ink' : 'border-transparent hover:bg-accent hover:border-ink'}`} title="Select Tool">
-          <i className="fa-solid fa-arrow-pointer text-ink"></i>
-        </button>
-        <button onClick={() => handleSetTool('hand')} className={`px-3 py-2 transition-colors border-1 ${currentTool === 'hand' ? 'bg-primary border-ink' : 'border-transparent hover:bg-accent hover:border-ink'}`} title="Pan Tool">
-          <i className="fa-solid fa-hand text-ink"></i>
-        </button>
-      </div>
+      <Tldraw
+        onMount={handleMount}
+        components={components}
+        persistenceKey="sas-decision-tree-map"
+      />
 
       <div className="absolute bottom-4 left-4 bg-white/90 p-2 border-1 border-ink pointer-events-none z-[1000] font-mono text-xs">
         <p className="font-bold">INTERACTIVE MAP</p>

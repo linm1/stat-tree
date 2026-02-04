@@ -3,7 +3,8 @@ export default {
   testEnvironment: 'jsdom',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
-    '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
+    '^.+\\.(css|less|scss|sass)$': 'identity-obj-proxy',
+    '^tldraw/tldraw\\.css$': 'identity-obj-proxy',
   },
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   transform: {
