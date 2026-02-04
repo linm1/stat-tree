@@ -265,7 +265,7 @@ run;`
   },
   bin_logistic: {
     id: 'bin_logistic',
-    question: "Logistic Reg / Risk Models",
+    question: "Logistic Reg",
     result: {
       procedures: ['PROC LOGISTIC', 'PROC GENMOD'],
       briefing: "Used for adjusting the odds ratio or risk difference for multiple covariates.",
@@ -367,7 +367,7 @@ run;`
   },
   count_nb: {
     id: 'count_nb',
-    question: "Negative Binomial Reg",
+    question: "Neg Binomial Reg",
     result: {
       procedures: ['PROC GENMOD'],
       briefing: "The standard for AE counts or exacerbations where overdispersion is present.",
@@ -421,7 +421,7 @@ run;`
   },
   tte_lifetest: {
     id: 'tte_lifetest',
-    question: "Kaplan-Meier & Log-rank",
+    question: "K-M & Log-rank",
     result: {
       procedures: ['PROC LIFETEST'],
       briefing: "Non-parametric estimation of survival curves and group comparisons.",
@@ -438,7 +438,7 @@ run;`
   },
   tte_phreg: {
     id: 'tte_phreg',
-    question: "Cox Proportional Hazards",
+    question: "Cox Prop. Hazards",
     result: {
       procedures: ['PROC PHREG'],
       briefing: "Semi-parametric model for estimating hazard ratios adjusted for covariates.",
@@ -508,13 +508,13 @@ run;`
   },
   ord_logistic: {
     id: 'ord_logistic',
-    question: "Proportional Odds Model",
+    question: "Prop. Odds Model",
     result: {
       procedures: ['PROC LOGISTIC'],
       briefing: "Cumulative logit model for ordinal data adjusted for covariates.",
       examples: [
         {
-          title: "Proportional Odds Model",
+          title: "Prop. Odds Model",
           code: `proc logistic data=trial;
     class treatment(ref='Placebo') center / param=ref;
     model severity(order=formatted) = treatment center age baseline / link=clogit;

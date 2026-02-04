@@ -13,7 +13,7 @@ export const DEFAULT_LAYOUT: LayoutConstants = {
   nodeWidth: 250,
   nodeHeight: 70,
   siblingGap: 10,
-  levelGap: 450,
+  levelGap: 470,
   startX: 0,
   startY: 0,
 };

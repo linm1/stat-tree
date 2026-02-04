@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { Tldraw, Editor, createShapeId } from 'tldraw';
+import { Tldraw, Editor, createShapeId, DefaultColorThemePalette } from 'tldraw';
 import { TreeData, ExpansionState } from '../types';
 import {
   calculateNodePositions,
@@ -18,6 +18,13 @@ import {
 import { calculatePathToNode, getHighlightedEdges } from '../utils/pathHighlighting';
 import { isEdgeOnHighlightedPath, shouldDeleteEdgeOnCollapse } from '../utils/edgeIdParser';
 import { calculateBoundsWithChildren } from '../utils/animations';
+
+// Override 'orange' color with Orchid (#F2BED1) for highlight styling
+// Note: tldraw's fill:'solid' uses .semi property (counterintuitive naming)
+DefaultColorThemePalette.lightMode.orange.solid = '#F2BED1';
+DefaultColorThemePalette.lightMode.orange.semi = '#F2BED1';
+DefaultColorThemePalette.darkMode.orange.solid = '#F2BED1';
+DefaultColorThemePalette.darkMode.orange.semi = '#F2BED1';
 
 const MAX_MAP_DEPTH = 6;
 
@@ -199,7 +206,7 @@ export const TldrawMapView: React.FC<TldrawMapViewProps> = ({
         fill: 'none',
         dash: 'solid',
         size: 's',
-        font: 'sans',
+        font: 'mono',
         text: displayText,
         align: 'middle',
         verticalAlign: 'middle',
@@ -385,7 +392,7 @@ export const TldrawMapView: React.FC<TldrawMapViewProps> = ({
         id: shapeId, type: 'geo', x, y,
         props: {
           w: DEFAULT_LAYOUT.nodeWidth, h: DEFAULT_LAYOUT.nodeHeight,
-          geo: 'rectangle', color, fill, dash, size: 's', font: 'sans',
+          geo: 'rectangle', color, fill, dash, size: 's', font: 'mono',
           text: displayText, align: 'middle', verticalAlign: 'middle',
         },
         meta: { nodeId: id, isExpandable, isExpanded }

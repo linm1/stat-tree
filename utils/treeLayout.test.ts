@@ -127,7 +127,7 @@ describe('Phase 4: Edge Routing Tests', () => {
     });
 
     it('levelGap should be large enough for routing', () => {
-      // Horizontal gap (450px) allows room for edge routing
+      // Horizontal gap (470px) allows room for edge routing
       expect(DEFAULT_LAYOUT.levelGap).toBeGreaterThanOrEqual(400);
     });
 
@@ -245,13 +245,13 @@ describe('Phase 4: Edge Routing Tests', () => {
     it('should calculate midpoint X for horizontal-vertical-horizontal routing', () => {
       // Test values - updated for current nodeWidth
       const parentRightX = 350; // 100 + 250
-      const childLeftX = 800; // 350 + 450
-      const levelGap = DEFAULT_LAYOUT.levelGap; // 450
+      const childLeftX = 820; // 350 + 470
+      const levelGap = DEFAULT_LAYOUT.levelGap; // 470
 
       // Expected: midpoint should be 40% of the gap from parent
       const expectedMidX = parentRightX + (levelGap * 0.4);
 
-      expect(expectedMidX).toBe(530); // 350 + 180 (450 * 0.4)
+      expect(expectedMidX).toBe(538); // 350 + 188 (470 * 0.4)
     });
 
     it('should route edges in H-V-H pattern (3 segments)', () => {
