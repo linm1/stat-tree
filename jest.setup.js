@@ -11,6 +11,14 @@ global.ResizeObserver = jest.fn().mockImplementation(() => ({
   disconnect: jest.fn(),
 }));
 
+// Mock requestAnimationFrame to execute synchronously in tests
+global.requestAnimationFrame = (callback) => {
+  return setTimeout(callback, 0);
+};
+global.cancelAnimationFrame = (id) => {
+  clearTimeout(id);
+};
+
 // Mock import.meta for Vite
 global.importMeta = {
   env: {

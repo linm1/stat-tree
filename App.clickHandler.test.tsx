@@ -42,8 +42,10 @@ const mockEditor = {
 // Mock Tldraw component
 jest.mock('tldraw', () => ({
   Tldraw: ({ onMount }: any) => {
+    const mountedRef = React.useRef(false);
     React.useEffect(() => {
-      if (onMount) {
+      if (onMount && !mountedRef.current) {
+        mountedRef.current = true;
         onMount(mockEditor);
       }
     }, [onMount]);
@@ -226,7 +228,10 @@ describe('Progressive Disclosure Click Handler (TDD - RED Phase)', () => {
         eventHandler({ name: 'pointer_up' });
       });
 
-      await waitFor(() => {}, { timeout: 100 });
+      // Wait for animation period to end (600ms)
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 650));
+      });
 
       // Second click: collapse
       const collapseShape = {
@@ -356,18 +361,20 @@ describe('Progressive Disclosure Click Handler (TDD - RED Phase)', () => {
       });
 
       // Wait for animation period to end (600ms)
-      await waitFor(() => {}, { timeout: 650 });
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 650));
+      });
 
-      const createShapesCallsBefore = mockEditor.createShapes.mock.calls.length;
+      const deleteShapesCallsBefore = mockEditor.deleteShapes.mock.calls.length;
 
-      // Second click (should be processed)
+      // Second click (should be processed - will collapse since node was expanded)
       act(() => {
         eventHandler({ name: 'pointer_up' });
       });
 
       await waitFor(() => {
-        const createShapesCallsAfter = mockEditor.createShapes.mock.calls.length;
-        expect(createShapesCallsAfter).toBeGreaterThan(createShapesCallsBefore);
+        const deleteShapesCallsAfter = mockEditor.deleteShapes.mock.calls.length;
+        expect(deleteShapesCallsAfter).toBeGreaterThan(deleteShapesCallsBefore);
       });
     });
   });
@@ -748,7 +755,11 @@ describe('Progressive Disclosure Click Handler (TDD - RED Phase)', () => {
       }]);
 
       act(() => { eventHandler({ name: 'pointer_up' }); });
-      await waitFor(() => {}, { timeout: 100 });
+
+      // Wait for animation period to end
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 650));
+      });
 
       // Expand cont_time (child of compare_groups)
       mockEditor.getSelectedShapes.mockReturnValue([{
@@ -757,7 +768,11 @@ describe('Progressive Disclosure Click Handler (TDD - RED Phase)', () => {
       }]);
 
       act(() => { eventHandler({ name: 'pointer_up' }); });
-      await waitFor(() => {}, { timeout: 100 });
+
+      // Wait for animation period to end
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 650));
+      });
 
       // Now collapse compare_groups (parent)
       mockEditor.getSelectedShapes.mockReturnValue([{

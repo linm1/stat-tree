@@ -47,7 +47,7 @@ export const TldrawMapView: React.FC<TldrawMapViewProps> = ({
   const layoutRef = useRef<LayoutNode | null>(null);
   const handlerRegisteredRef = useRef<boolean>(false);
   const [currentTool, setCurrentTool] = useState<string>('select');
-  const [isAnimating, setIsAnimating] = useState(false);
+  const isAnimatingRef = useRef(false);
   const [highlightedEdges, setHighlightedEdges] = useState<Set<string>>(new Set());
   const highlightedPathRef = useRef<Set<string>>(highlightedPath);
   const highlightedEdgesRef = useRef<Set<string>>(new Set());
@@ -337,7 +337,7 @@ export const TldrawMapView: React.FC<TldrawMapViewProps> = ({
 
   const handleNodeClick = (nodeId: string) => {
     const node = data[nodeId];
-    if (isAnimating) return;
+    if (isAnimatingRef.current) return;
 
     const fullPath = calculatePathToNode(nodeId, data);
     setHighlightedPath(new Set(fullPath));
@@ -352,13 +352,13 @@ export const TldrawMapView: React.FC<TldrawMapViewProps> = ({
       return;
     }
 
-    setIsAnimating(true);
+    isAnimatingRef.current = true;
     setExpansionState(prevState => {
       const newState = toggleNodeExpansion(nodeId, prevState, data);
       requestAnimationFrame(() => updateShapesForExpansionChange(nodeId, newState));
       return newState;
     });
-    setTimeout(() => setIsAnimating(false), 600);
+    setTimeout(() => { isAnimatingRef.current = false; }, 600);
   };
 
   const handleMount = (editor: Editor) => {
