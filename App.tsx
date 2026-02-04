@@ -31,6 +31,7 @@ import {
   hasChildren
 } from './utils/expansionState';
 import { calculatePathToNode, getHighlightedEdges } from './utils/pathHighlighting';
+import { isEdgeOnHighlightedPath, shouldDeleteEdgeOnCollapse } from './utils/edgeIdParser';
 import { calculateBoundsWithChildren } from './utils/animations';
 
 // --- Tldraw Map Component ---
@@ -204,7 +205,8 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
       const edgeSize = isHighlighted ? 'm' : 's';
 
       // Create unique base ID for this edge
-      const baseId = `edge-${startId.id || startId}-${endId.id || endId}`;
+      // Use consistent format matching incremental updates (line 635)
+      const baseId = `edge-node-${parentNodeId}-node-${childNodeId}`;
 
       // Create 3 line segments for orthogonal path (H-V-H pattern):
       // 1. Horizontal line from parent right to midpoint X
@@ -463,19 +465,11 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
 
       // Update edges
       if (shape.type === 'arrow' && shape.id.includes('edge')) {
-        // Extract parent and child node IDs from edge ID
-        // Format: edge-{parentId}-{childId}-{segment}
-        const edgeId = shape.id as string;
-
-        // Parse parent and child node IDs from shape ID
-        // Remove segment suffix (-h1, -h2, -v) then match edge-{parentId}-{childId}
-        const cleanedId = edgeId.replace(/-h1$|-h2$|-v$/g, '');
-        const match = cleanedId.match(/^edge-(.+?)-(.+)$/);
-        let isEdgeHighlighted = false;
-        if (match) {
-          const [, parentId, childId] = match;
-          isEdgeHighlighted = highlightedPathRef.current.has(parentId) && highlightedPathRef.current.has(childId);
-        }
+        // Check if edge is on highlighted path using centralized parser
+        const isEdgeHighlighted = isEdgeOnHighlightedPath(
+          shape.id as string,
+          highlightedPathRef.current
+        );
 
         if (isEdgeHighlighted) {
           // Highlighted: orange solid lines
@@ -788,23 +782,19 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
       // Get node shape IDs for descendants
       const nodeShapeIds = descendants.map(id => createShapeId(`node-${id}`));
 
-      // Find edge shapes that connect to any descendant node
-      // Edge ID format: edge-node-{parent}-node-{child}-{segment}
+      // Find edge shapes that should be deleted using centralized parser
+      // Deletes edges where: child is a descendant OR parent is the collapsed node
       let edgeShapeIds: any[] = [];
       if (editor.getCurrentPageShapes) {
         const allShapes = editor.getCurrentPageShapes();
         edgeShapeIds = allShapes
           .filter((shape: any) => {
-            if (shape.type !== 'arrow' || !shape.id.includes('edge-node-')) return false;
-            const edgeId = shape.id as string;
-            const cleanedId = edgeId.replace(/-h1$|-h2$|-v$/g, '');
-            const match = cleanedId.match(/edge-node-(.+?)-node-(.+)$/);
-            if (match) {
-              const [, , childId] = match;
-              // Delete edge if child is a descendant (parent connects to descendant)
-              return descendantSet.has(childId);
-            }
-            return false;
+            if (shape.type !== 'arrow' || !shape.id.includes('edge')) return false;
+            return shouldDeleteEdgeOnCollapse(
+              shape.id as string,
+              clickedNodeId,
+              descendantSet
+            );
           })
           .map((shape: any) => shape.id);
       }
