@@ -4,7 +4,8 @@
  */
 
 import { describe, test, expect } from '@jest/globals';
-import { hasChildren, addIconToText, EXPAND_ICON, COLLAPSE_ICON } from './utils/nodeIcons';
+import { addIconToText, EXPAND_ICON, COLLAPSE_ICON } from './utils/nodeIcons';
+import { hasChildren } from './utils/expansionState';
 import { TREE_DATA } from './data';
 
 describe('App Component - Icon Integration (Phase 6)', () => {
