@@ -71,13 +71,25 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
   const [highlightedPath, setHighlightedPath] = useState<Set<string>>(new Set(['start']));
   const [highlightedEdges, setHighlightedEdges] = useState<Set<string>>(new Set());
 
+  // Refs for highlight state - ensures reapplyHighlighting always reads latest values
+  // (avoids stale closure issues when called from requestAnimationFrame/setTimeout)
+  const highlightedPathRef = useRef<Set<string>>(new Set(['start']));
+  const highlightedEdgesRef = useRef<Set<string>>(new Set());
+
+  // Wrapper to sync both state and ref when updating highlighted path
+  const updateHighlightedPath = (newPath: Set<string>, newEdges: Set<string>) => {
+    highlightedPathRef.current = newPath;
+    highlightedEdgesRef.current = newEdges;
+    setHighlightedPath(newPath);
+    setHighlightedEdges(newEdges);
+  };
+
   // Sync highlighted path when external selection changes (from Interactive Flow)
   useEffect(() => {
     if (selectedNodeId) {
       // Calculate full path from root to selected node
       const fullPath = calculatePathToNode(selectedNodeId, data);
-      setHighlightedPath(new Set(fullPath));
-      setHighlightedEdges(getHighlightedEdges(fullPath));
+      updateHighlightedPath(new Set(fullPath), getHighlightedEdges(fullPath));
     }
   }, [selectedNodeId, data]);
 
@@ -182,10 +194,9 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
       // Check if this edge should be highlighted (both parent and child are on highlighted path)
       const isHighlighted = highlightedPath.has(parentNodeId) && highlightedPath.has(childNodeId);
 
-      // Get arrow style based on level and highlight state
-      const style = getArrowStyleWithHighlight(level, isHighlighted);
-
-      // Use correct size based on highlighting: 'm' if highlighted, 's' otherwise
+      // Default: gray dashed lines; Highlighted: orange solid lines
+      const edgeColor = isHighlighted ? 'orange' : 'grey';
+      const edgeDash = isHighlighted ? 'solid' : 'dashed';
       const edgeSize = isHighlighted ? 'm' : 's';
 
       // Create unique base ID for this edge
@@ -200,9 +211,9 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
           start: { x: parentRightX, y: parentCenterY },
           end: { x: midX, y: parentCenterY },
           bend: 0,
-          color: style.color,
+          color: edgeColor,
           size: edgeSize,
-          dash: style.dash,
+          dash: edgeDash,
           arrowheadStart: 'none',
           arrowheadEnd: 'none',
         },
@@ -218,9 +229,9 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
             start: { x: midX, y: parentCenterY },
             end: { x: midX, y: childCenterY },
             bend: 0,
-            color: style.color,
+            color: edgeColor,
             size: edgeSize,
-            dash: style.dash,
+            dash: edgeDash,
             arrowheadStart: 'none',
             arrowheadEnd: 'none',
           },
@@ -235,9 +246,9 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
           start: { x: midX, y: childCenterY },
           end: { x: childLeftX, y: childCenterY },
           bend: 0,
-          color: style.color,
+          color: edgeColor,
           size: edgeSize,
-          dash: style.dash,
+          dash: edgeDash,
           arrowheadStart: 'none',
           arrowheadEnd: 'arrow',
           text: '',
@@ -253,39 +264,17 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
         return; // Skip this node and its children
       }
 
-      // Determine node color and fill based on node ID and layer
-      // Layer 1: start (black, solid)
-      // Layer 2: compare_groups (blue, solid), describe_explore (green, solid - result node)
-      // Layer 3: 5 outcome branches (violet, semi)
+      // All nodes: gray border, no fill by default
+      // Highlighted nodes get orange fill (applied via reapplyHighlighting)
       let color = 'grey';
       let fill = 'none';
-      let dash: 'solid' | 'dashed' = 'solid';
+      const dash: 'solid' | 'dashed' = 'solid';
 
-      // Check if node is on highlighted path
+      // Check if node is on highlighted path - apply orange fill
       const isOnHighlightedPath = highlightedPath.has(layoutNode.id);
-
-      if (layoutNode.id === 'start') {
-        // Layer 1: Root node
-        color = 'black';
-        fill = 'solid';
-      } else if (layoutNode.id === 'compare_groups') {
-        // Layer 2: Compare Groups path
-        color = 'blue';
-        fill = 'solid';
-      } else if (layoutNode.id === 'describe_explore') {
-        // Layer 2: Describe/Explore path (result node)
-        color = 'green';
-        fill = 'solid';
-      } else if (['cont_time', 'bin_time', 'count_check', 'tte_type', 'ord_type'].includes(layoutNode.id)) {
-        // Layer 3: The 5 outcome branches (now directly under compare_groups)
-        color = 'violet';
-        fill = 'semi';
-      }
-
-      // Apply highlighting border if node is on highlighted path
       if (isOnHighlightedPath) {
-        dash = 'dashed';
-        color = 'orange'; // Amber color for highlighting
+        fill = 'solid';
+        color = 'orange';
       }
 
       // Get node text from TREE_DATA
@@ -440,36 +429,28 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
       // Update nodes
       if (shape.type === 'geo' && shape.meta?.nodeId) {
         const nodeId = shape.meta.nodeId;
-        const isHighlighted = highlightedPath.has(nodeId);
+        const isHighlighted = highlightedPathRef.current.has(nodeId);
 
         if (isHighlighted) {
+          // Highlighted nodes: orange background fill, solid border
           updates.push({
             id: shape.id,
             type: 'geo',
             props: {
-              dash: 'dashed',
-              color: 'orange'
+              fill: 'solid',
+              color: 'orange',
+              dash: 'solid'
             }
           });
         } else {
-          // Reset to default styling (remove highlighting)
-          let defaultColor = 'grey';
-          if (nodeId === 'start') {
-            defaultColor = 'black';
-          } else if (nodeId === 'compare_groups') {
-            defaultColor = 'blue';
-          } else if (nodeId === 'describe_explore') {
-            defaultColor = 'green';
-          } else if (['cont_time', 'bin_time', 'count_check', 'tte_type', 'ord_type'].includes(nodeId)) {
-            defaultColor = 'violet';
-          }
-
+          // Non-highlighted nodes: no background fill, solid border
           updates.push({
             id: shape.id,
             type: 'geo',
             props: {
-              dash: 'solid',
-              color: defaultColor
+              fill: 'none',
+              color: 'grey',
+              dash: 'solid'
             }
           });
         }
@@ -488,25 +469,28 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
         let isEdgeHighlighted = false;
         if (match) {
           const [, parentId, childId] = match;
-          isEdgeHighlighted = highlightedPath.has(parentId) && highlightedPath.has(childId);
+          isEdgeHighlighted = highlightedPathRef.current.has(parentId) && highlightedPathRef.current.has(childId);
         }
 
         if (isEdgeHighlighted) {
+          // Highlighted: orange solid lines
           updates.push({
             id: shape.id,
             type: 'arrow',
             props: {
               color: 'orange',
+              dash: 'solid',
               size: 'm'
             }
           });
         } else {
-          // Reset to default
+          // Default: gray dashed lines
           updates.push({
             id: shape.id,
             type: 'arrow',
             props: {
-              color: shape.props.color !== 'orange' ? shape.props.color : 'grey',
+              color: 'grey',
+              dash: 'dashed',
               size: 's'
             }
           });
@@ -636,13 +620,18 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
 
     if (edgeRouting) {
       // Check if edge should be highlighted
+      // Default: gray dashed lines; Highlighted: orange solid lines
       const isHighlighted = highlightedPath.has(parentNodeId) && highlightedPath.has(childNodeId);
       const edgeColor = isHighlighted ? 'orange' : 'grey';
+      const edgeDash = isHighlighted ? 'solid' : 'dashed';
       const edgeSize = isHighlighted ? 'm' : 's';
+
+      // Use consistent edge ID format: edge-node-{parent}-node-{child}-{segment}
+      const edgeBaseId = `edge-node-${parentNodeId}-node-${childNodeId}`;
 
       // Horizontal segment 1 (h1): parent right to midpoint
       shapes.push({
-        id: createShapeId(`edge-h1-${endId}`),
+        id: createShapeId(`${edgeBaseId}-h1`),
         type: 'arrow',
         props: {
           start: { x: edgeRouting.horizontal1.x1, y: edgeRouting.horizontal1.y },
@@ -650,6 +639,7 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
           bend: 0,
           color: edgeColor,
           size: edgeSize,
+          dash: edgeDash,
           arrowheadStart: 'none',
           arrowheadEnd: 'none'
         }
@@ -659,7 +649,7 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
       // Only create if there's meaningful vertical distance (avoid zero-length segments)
       if (Math.abs(edgeRouting.vertical.y1 - edgeRouting.vertical.y2) > 2) {
         shapes.push({
-          id: createShapeId(`edge-v-${endId}`),
+          id: createShapeId(`${edgeBaseId}-v`),
           type: 'arrow',
           props: {
             start: { x: edgeRouting.vertical.x, y: edgeRouting.vertical.y1 },
@@ -667,6 +657,7 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
             bend: 0,
             color: edgeColor,
             size: edgeSize,
+            dash: edgeDash,
             arrowheadStart: 'none',
             arrowheadEnd: 'none'
           }
@@ -675,7 +666,7 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
 
       // Horizontal segment 2 (h2): midpoint to child left (with arrowhead)
       shapes.push({
-        id: createShapeId(`edge-h2-${endId}`),
+        id: createShapeId(`${edgeBaseId}-h2`),
         type: 'arrow',
         props: {
           start: { x: edgeRouting.horizontal2.x1, y: edgeRouting.horizontal2.y },
@@ -683,6 +674,7 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
           bend: 0,
           color: edgeColor,
           size: edgeSize,
+          dash: edgeDash,
           arrowheadStart: 'none',
           arrowheadEnd: 'arrow'
         }
@@ -779,18 +771,33 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
     } else {
       // COLLAPSING: Remove descendant shapes
       const descendants = getAllDescendants(clickedNodeId, data);
-      const shapeIdsToDelete = descendants.flatMap(id =>
-        [
-          createShapeId(`node-${id}`),
-          createShapeId(`edge-${id}`),
-          createShapeId(`edge-h-${id}`),
-          createShapeId(`edge-h1-${id}`),
-          createShapeId(`edge-h2-${id}`),
-          createShapeId(`edge-v-${id}`)
-        ]
-      );
+      const descendantSet = new Set(descendants);
 
-      editor.deleteShapes(shapeIdsToDelete);
+      // Get node shape IDs for descendants
+      const nodeShapeIds = descendants.map(id => createShapeId(`node-${id}`));
+
+      // Find edge shapes that connect to any descendant node
+      // Edge ID format: edge-node-{parent}-node-{child}-{segment}
+      let edgeShapeIds: any[] = [];
+      if (editor.getCurrentPageShapes) {
+        const allShapes = editor.getCurrentPageShapes();
+        edgeShapeIds = allShapes
+          .filter((shape: any) => {
+            if (shape.type !== 'arrow' || !shape.id.includes('edge-node-')) return false;
+            const edgeId = shape.id as string;
+            const cleanedId = edgeId.replace(/-h1$|-h2$|-v$/g, '');
+            const match = cleanedId.match(/edge-node-(.+?)-node-(.+)$/);
+            if (match) {
+              const [, , childId] = match;
+              // Delete edge if child is a descendant (parent connects to descendant)
+              return descendantSet.has(childId);
+            }
+            return false;
+          })
+          .map((shape: any) => shape.id);
+      }
+
+      editor.deleteShapes([...nodeShapeIds, ...edgeShapeIds]);
 
       // Zoom to parent
       setTimeout(() => focusOnNode(clickedNodeId), 100);
@@ -809,8 +816,7 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
 
     // Update highlighted path when any node is clicked
     const fullPath = calculatePathToNode(nodeId, data);
-    setHighlightedPath(new Set(fullPath));
-    setHighlightedEdges(getHighlightedEdges(fullPath));
+    updateHighlightedPath(new Set(fullPath), getHighlightedEdges(fullPath));
 
     // Notify parent of selection change (for bidirectional sync)
     if (onSelectionChange) {

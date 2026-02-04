@@ -137,8 +137,8 @@ describe('Phase 4: Edge Routing Tests', () => {
   });
 
   describe('Highlight Style Constants', () => {
-    it('HIGHLIGHT_STYLE.color should be an amber/orange hex color', () => {
-      expect(HIGHLIGHT_STYLE.color).toBe('#F59E0B');
+    it('HIGHLIGHT_STYLE.color should be orange (Tldraw named color)', () => {
+      expect(HIGHLIGHT_STYLE.color).toBe('orange');
     });
 
     it('HIGHLIGHT_STYLE.strokeWidth should be 4 (thicker than default 2)', () => {
@@ -160,18 +160,18 @@ describe('Phase 4: Edge Routing Tests', () => {
       expect(style.strokeWidth).toBe(2); // Default stroke width
     });
 
-    it('returns highlight style with amber color when highlighted', () => {
+    it('returns highlight style with orange color when highlighted', () => {
       const style = getArrowStyleWithHighlight(1, true);
 
-      expect(style.color).toBe('#F59E0B'); // Amber highlight color
+      expect(style.color).toBe('orange'); // Tldraw named color
       expect(style.dash).toBe('solid');
       expect(style.strokeWidth).toBe(4); // Thicker stroke for highlight
     });
 
-    it('overrides level-3 violet with amber when highlighted', () => {
+    it('overrides level-3 violet with orange when highlighted', () => {
       const style = getArrowStyleWithHighlight(3, true);
 
-      expect(style.color).toBe('#F59E0B'); // Amber, not violet
+      expect(style.color).toBe('orange'); // Orange, not violet
       expect(style.dash).toBe('solid');
       expect(style.strokeWidth).toBe(4);
     });
