@@ -49,49 +49,53 @@ interface TldrawMapViewProps {
   onNodeClick: (id: string) => void;
   selectedNodeId?: string; // External selection from Interactive Flow
   onSelectionChange?: (nodeId: string) => void; // Notify parent of map selection
+  expansionState: ExpansionState;
+  setExpansionState: React.Dispatch<React.SetStateAction<ExpansionState>>;
+  highlightedPath: Set<string>;
+  setHighlightedPath: React.Dispatch<React.SetStateAction<Set<string>>>;
 }
 
 const TldrawMapView: React.FC<TldrawMapViewProps> = ({
   data,
   onNodeClick,
   selectedNodeId,
-  onSelectionChange
+  onSelectionChange,
+  expansionState,
+  setExpansionState,
+  highlightedPath,
+  setHighlightedPath
 }) => {
   const [isMounted, setIsMounted] = useState(false);
   const editorRef = useRef<Editor | null>(null);
   const layoutRef = useRef<LayoutNode | null>(null);
   const handlerRegisteredRef = useRef<boolean>(false);
   const [currentTool, setCurrentTool] = useState<string>('select');
-  const [expansionState, setExpansionState] = useState<ExpansionState>(
-    createInitialExpansionState()
-  );
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // Path highlighting state
-  const [highlightedPath, setHighlightedPath] = useState<Set<string>>(new Set(['start']));
+  // Path highlighting edges state (derived from path)
   const [highlightedEdges, setHighlightedEdges] = useState<Set<string>>(new Set());
 
   // Refs for highlight state - ensures reapplyHighlighting always reads latest values
   // (avoids stale closure issues when called from requestAnimationFrame/setTimeout)
-  const highlightedPathRef = useRef<Set<string>>(new Set(['start']));
+  const highlightedPathRef = useRef<Set<string>>(highlightedPath);
   const highlightedEdgesRef = useRef<Set<string>>(new Set());
 
-  // Wrapper to sync both state and ref when updating highlighted path
-  const updateHighlightedPath = (newPath: Set<string>, newEdges: Set<string>) => {
-    highlightedPathRef.current = newPath;
-    highlightedEdgesRef.current = newEdges;
-    setHighlightedPath(newPath);
-    setHighlightedEdges(newEdges);
-  };
+  // Sync refs with incoming props
+  useEffect(() => {
+    highlightedPathRef.current = highlightedPath;
+  }, [highlightedPath]);
 
   // Sync highlighted path when external selection changes (from Interactive Flow)
   useEffect(() => {
     if (selectedNodeId) {
       // Calculate full path from root to selected node
       const fullPath = calculatePathToNode(selectedNodeId, data);
-      updateHighlightedPath(new Set(fullPath), getHighlightedEdges(fullPath));
+      const newPath = new Set(fullPath);
+      const newEdges = getHighlightedEdges(fullPath);
+      setHighlightedPath(newPath);
+      setHighlightedEdges(newEdges);
     }
-  }, [selectedNodeId, data]);
+  }, [selectedNodeId, data, setHighlightedPath]);
 
   // Re-apply highlighting when highlighted path changes
   useEffect(() => {
@@ -424,6 +428,7 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
     const editor = editorRef.current;
     const allShapes = editor.getCurrentPageShapes();
     const updates: any[] = [];
+    const highlightedEdgeIds: string[] = [];
 
     allShapes.forEach((shape: any) => {
       // Update nodes
@@ -459,13 +464,13 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
       // Update edges
       if (shape.type === 'arrow' && shape.id.includes('edge')) {
         // Extract parent and child node IDs from edge ID
-        // Format: edge-node-{parentId}-node-{childId}-{segment}
+        // Format: edge-{parentId}-{childId}-{segment}
         const edgeId = shape.id as string;
 
         // Parse parent and child node IDs from shape ID
-        // Shape ID format: edge-node-{parentId}-node-{childId}-{segment}
+        // Remove segment suffix (-h1, -h2, -v) then match edge-{parentId}-{childId}
         const cleanedId = edgeId.replace(/-h1$|-h2$|-v$/g, '');
-        const match = cleanedId.match(/edge-node-(.+?)-node-(.+)$/);
+        const match = cleanedId.match(/^edge-(.+?)-(.+)$/);
         let isEdgeHighlighted = false;
         if (match) {
           const [, parentId, childId] = match;
@@ -483,6 +488,8 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
               size: 'm'
             }
           });
+          // Collect highlighted edge IDs for z-index fix
+          highlightedEdgeIds.push(shape.id);
         } else {
           // Default: gray dashed lines
           updates.push({
@@ -500,6 +507,11 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
 
     if (updates.length > 0) {
       editor.updateShapes(updates);
+
+      // Bring all highlighted edges to front (z-index fix)
+      if (highlightedEdgeIds.length > 0) {
+        editor.bringToFront(highlightedEdgeIds);
+      }
     }
   };
 
@@ -816,7 +828,10 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
 
     // Update highlighted path when any node is clicked
     const fullPath = calculatePathToNode(nodeId, data);
-    updateHighlightedPath(new Set(fullPath), getHighlightedEdges(fullPath));
+    const newPath = new Set(fullPath);
+    const newEdges = getHighlightedEdges(fullPath);
+    setHighlightedPath(newPath);
+    setHighlightedEdges(newEdges);
 
     // Notify parent of selection change (for bidirectional sync)
     if (onSelectionChange) {
@@ -830,7 +845,10 @@ const TldrawMapView: React.FC<TldrawMapViewProps> = ({
 
     // Check if expandable
     if (!node.options || node.options.length === 0) {
-      onNodeClick(nodeId); // Leaf node - show result panel
+      // Delay view switch to show highlight animation
+      setTimeout(() => {
+        onNodeClick(nodeId); // Leaf node - show result panel
+      }, 400); // 400ms matches Tldraw animation timing
       return;
     }
 
@@ -994,6 +1012,12 @@ const App: React.FC = () => {
   // Default to 'map' as requested
   const [viewMode, setViewMode] = useState<'interactive' | 'map'>('map');
 
+  // Persistent state for Map view (survives view switching)
+  const [mapExpansionState, setMapExpansionState] = useState<ExpansionState>(
+    createInitialExpansionState()
+  );
+  const [mapHighlightedPath, setMapHighlightedPath] = useState<Set<string>>(new Set(['start']));
+
   const currentNodeId = history[history.length - 1];
   const currentNode: DecisionNode = TREE_DATA[currentNodeId] || TREE_DATA['start'];
 
@@ -1015,6 +1039,12 @@ const App: React.FC = () => {
   const handleJumpToNode = (id: string) => {
     setHistory(['start', id]);
     setViewMode('interactive');
+  };
+
+  const handleMapSelection = (nodeId: string) => {
+    // Sync history when map selection changes (bidirectional sync)
+    const fullPath = calculatePathToNode(nodeId, TREE_DATA);
+    setHistory(fullPath);
   };
 
   const breadcrumbs = useMemo(() => {
@@ -1212,6 +1242,11 @@ const App: React.FC = () => {
               data={TREE_DATA}
               onNodeClick={handleJumpToNode}
               selectedNodeId={currentNodeId}
+              onSelectionChange={handleMapSelection}
+              expansionState={mapExpansionState}
+              setExpansionState={setMapExpansionState}
+              highlightedPath={mapHighlightedPath}
+              setHighlightedPath={setMapHighlightedPath}
             />
             
             <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
