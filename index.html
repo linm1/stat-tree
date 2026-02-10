@@ -90,6 +90,14 @@
         .tl-background {
             background-color: #F9F5F6 !important;
         }
+        /* Override Tldraw's --color-selected variable (blue -> pink) */
+        .tlui-layout {
+            --color-selected: #F2BED1 !important;
+        }
+        /* Tldraw toolbar button active state uses ::after pseudo-element */
+        .tlui-button__tool[aria-checked='true']:not(:disabled)::after {
+            background: #F2BED1 !important;
+        }
     </style>
 <script type="importmap">
 {
