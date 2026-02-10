@@ -128,13 +128,13 @@ describe('TldrawMapView - Vertical Toolbar Migration (TDD)', () => {
       expect(tldrawComponent?.getAttribute('data-has-toolbar')).toBe('true');
     });
 
-    it('should hide NavigationPanel by setting it to null', () => {
+    it('should enable NavigationPanel by NOT setting it to null', () => {
       const { container } = render(<TldrawMapView {...defaultProps} />);
 
       const tldrawComponent = container.querySelector('[data-testid="tldraw-component"]');
 
-      // NavigationPanel should be null
-      expect(tldrawComponent?.getAttribute('data-has-navigation-panel')).toBe('false');
+      // NavigationPanel should be enabled (not null)
+      expect(tldrawComponent?.getAttribute('data-has-navigation-panel')).toBe('true');
     });
 
     it('should hide MainMenu by setting it to null', () => {
@@ -183,7 +183,7 @@ describe('TldrawMapView - Vertical Toolbar Migration (TDD)', () => {
       });
     });
 
-    it('should only have 2 toolbar items (Select and Hand)', async () => {
+    it('should only have 2 toolbar items (Select and Hand) in custom toolbar', async () => {
       render(<TldrawMapView {...defaultProps} />);
 
       await waitFor(() => {
@@ -193,7 +193,7 @@ describe('TldrawMapView - Vertical Toolbar Migration (TDD)', () => {
         expect(selectTool).toBeInTheDocument();
         expect(handTool).toBeInTheDocument();
 
-        // No other tool items should exist
+        // No other custom tool items should exist in our toolbar
         const allButtons = screen.queryAllByRole('button');
         const toolButtons = allButtons.filter(btn =>
           btn.getAttribute('data-testid')?.includes('tool-item')
@@ -212,7 +212,7 @@ describe('TldrawMapView - Vertical Toolbar Migration (TDD)', () => {
       expect(zoomIcons).toHaveLength(0);
     });
 
-    it('should NOT render custom tool buttons (select/hand)', () => {
+    it('should NOT render custom tool buttons (select/hand) outside of Tldraw toolbar', () => {
       const { container } = render(<TldrawMapView {...defaultProps} />);
 
       // Legacy toolbar used these icons
@@ -220,24 +220,25 @@ describe('TldrawMapView - Vertical Toolbar Migration (TDD)', () => {
       expect(toolIcons).toHaveLength(0);
     });
 
-    it('should NOT have zoom handler buttons', () => {
+    it('should use native NavigationPanel for zoom controls', () => {
       const { container } = render(<TldrawMapView {...defaultProps} />);
 
-      // Look for buttons with zoom-related titles
+      // No custom zoom buttons in separate panel
       const buttons = container.querySelectorAll('button');
-      const zoomButtons = Array.from(buttons).filter(btn =>
-        btn.title?.includes('Zoom') || btn.title?.includes('Fit')
+      const customZoomButtons = Array.from(buttons).filter(btn =>
+        btn.getAttribute('data-testid')?.includes('zoom-')
       );
 
-      expect(zoomButtons).toHaveLength(0);
+      // No custom zoom buttons (now in native NavigationPanel)
+      expect(customZoomButtons).toHaveLength(0);
     });
 
-    it('should still render bottom-left info panel', () => {
+    it('should NOT render custom bottom-left camera controls panel', () => {
       const { container } = render(<TldrawMapView {...defaultProps} />);
 
-      // Info panel should still exist
-      expect(container.textContent).toContain('INTERACTIVE MAP');
-      expect(container.textContent).toContain('Click nodes to navigate');
+      // No "Interactive Map" text or custom camera controls panel
+      expect(container.textContent).not.toContain('Interactive Map');
+      expect(screen.queryByTestId('camera-controls')).not.toBeInTheDocument();
     });
   });
 

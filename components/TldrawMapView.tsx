@@ -196,6 +196,7 @@ export const TldrawMapView: React.FC<TldrawMapViewProps> = ({
     );
   };
 
+
   const createNodeShape = (
     id: string, text: string, x: number, y: number,
     color: string, isExpandable: boolean, isExpanded: boolean
@@ -548,7 +549,6 @@ export const TldrawMapView: React.FC<TldrawMapViewProps> = ({
         <HandToolbarItem />
       </DefaultToolbar>
     ),
-    NavigationPanel: null,
     MainMenu: null,
     ContextMenu: null,
     ActionsMenu: null,
@@ -572,11 +572,6 @@ export const TldrawMapView: React.FC<TldrawMapViewProps> = ({
         components={components}
         persistenceKey="sas-decision-tree-map"
       />
-
-      <div className="absolute bottom-4 left-4 bg-white/90 p-2 border-1 border-ink pointer-events-none z-[1000] font-mono text-xs">
-        <p className="font-bold">INTERACTIVE MAP</p>
-        <p>Click nodes to navigate - Pan/Zoom to explore</p>
-      </div>
     </div>
   );
 };
